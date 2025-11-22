@@ -20,5 +20,6 @@ COPY . /app
 # 內建外部研究庫（固定路徑 /app/EarningsCallAgenticRag）
 RUN git clone https://github.com/la9806958/EarningsCallAgenticRag.git /app/EarningsCallAgenticRag
 
-# 啟動命令（使用平台提供的 PORT，預設 8000）
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# 啟動命令（使用平台提供的 PORT，預設 8000），先生成 credentials.json
+RUN chmod +x /app/entrypoint.sh
+CMD ["/app/entrypoint.sh"]
