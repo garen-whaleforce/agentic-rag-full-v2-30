@@ -58,29 +58,47 @@ def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict
     Fetch daily historical prices between start and end (inclusive).
     """
     _require_api_key()
+    params = {
+        "symbol": symbol,
+        "from": start.strftime("%Y-%m-%d"),
+        "to": end.strftime("%Y-%m-%d"),
+        "apikey": FMP_API_KEY,
+    }
     with _get_client() as client:
         try:
             resp = _get(
                 client,
                 "historical-price-eod/full",
-                params={
-                    "symbol": symbol,
-                    "from": start.strftime("%Y-%m-%d"),
-                    "to": end.strftime("%Y-%m-%d"),
-                    "apikey": FMP_API_KEY,
-                },
+                params=params,
             )
             resp.raise_for_status()
             data = resp.json() or {}
         except httpx.HTTPStatusError:
             # If data not yet available or 404, return empty
-            return []
+            data = {}
+
+        # fallback: if empty, try without date filters to get recent window then filter locally
+        if (isinstance(data, dict) and not data.get("historical")) or (isinstance(data, list) and not data):
+            try:
+                resp = _get(client, "historical-price-eod/full", params={"symbol": symbol, "apikey": FMP_API_KEY})
+                resp.raise_for_status()
+                data = resp.json() or {}
+            except Exception:
+                data = {}
+
     if isinstance(data, dict):
         hist = data.get("historical") or []
     elif isinstance(data, list):
         hist = data
     else:
         hist = []
+
+    # If fetched without date filters, slice to requested window
+    if hist and (not params.get("from") or not params.get("to")):
+        start_str = start.strftime("%Y-%m-%d")
+        end_str = end.strftime("%Y-%m-%d")
+        hist = [h for h in hist if start_str <= h.get("date", "") <= end_str]
+
     # FMP returns descending by date; ensure sorted ascending
     hist_sorted = sorted(hist, key=lambda x: x.get("date", ""))
     return hist_sorted
