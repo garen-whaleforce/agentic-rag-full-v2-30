@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+class Neo4jIngestError(RuntimeError):
+    """Raised when on-the-fly Neo4j ingestion fails."""
+
+
+REPO_NAME = "EarningsCallAgenticRag"
+
+
+def _resolve_repo_path() -> Path:
+    base = Path(__file__).resolve().parent
+    env_path = os.getenv("EARNINGS_RAG_PATH")
+    repo_path = Path(env_path) if env_path else base / REPO_NAME
+    if not repo_path.exists():
+        raise Neo4jIngestError(
+            f"找不到外部研究庫資料夾：{repo_path}. "
+            "請先執行 `git clone https://github.com/la9806958/EarningsCallAgenticRag.git EarningsCallAgenticRag` "
+            "並確認與本專案並排。"
+        )
+    return repo_path
+
+
+def _ensure_sys_path(repo_path: Path) -> None:
+    repo_str = str(repo_path)
+    if repo_str not in sys.path:
+        sys.path.insert(0, repo_str)
+
+
+def _credentials_path(repo_path: Path) -> Path:
+    cred = repo_path / "credentials.json"
+    if not cred.exists():
+        raise Neo4jIngestError(
+            f"外部庫的 credentials.json 未找到：{cred}. "
+            "請依照 EarningsCallAgenticRag README 填入 OpenAI 與 Neo4j 設定。"
+        )
+    return cred
+
+
+def _financial_facts(financials: Optional[Dict[str, Any]], ticker: str, quarter_label: str) -> List[Dict[str, Any]]:
+    """Create lightweight facts from the latest financial statement rows."""
+    if not financials:
+        return []
+
+    income = (financials.get("income") or [{}])[0]
+    balance = (financials.get("balance") or [{}])[0]
+    cash = (financials.get("cashFlow") or [{}])[0]
+
+    def pick(row: dict, key: str) -> Optional[Any]:
+        return row.get(key) if isinstance(row, dict) else None
+
+    candidates = [
+        ("Revenue", pick(income, "revenue")),
+        ("Net Income", pick(income, "netIncome")),
+        ("EPS", pick(income, "eps")),
+        ("Gross Profit", pick(income, "grossProfit")),
+        ("Total Assets", pick(balance, "totalAssets")),
+        ("Total Liabilities", pick(balance, "totalLiabilities")),
+        ("Cash & Equivalents", pick(balance, "cashAndCashEquivalents")),
+        ("Operating Cash Flow", pick(cash, "operatingCashFlow")),
+        ("Free Cash Flow", pick(cash, "freeCashFlow")),
+    ]
+
+    facts: List[Dict[str, Any]] = []
+    for metric, value in candidates:
+        if value is None or value == "":
+            continue
+        facts.append(
+            {
+                "ticker": ticker,
+                "quarter": quarter_label,
+                "type": "Result",
+                "metric": metric,
+                "value": value,
+                "reason": "Latest quarter financial snapshot",
+            }
+        )
+    return facts
+
+
+def ingest_context_into_neo4j(context: Dict[str, Any]) -> None:
+    """
+    On-demand ingestion: extract transcript facts and minimal financial facts into Neo4j.
+    This gives the helper agents data to work with without offline batch runs.
+    """
+    repo_path = _resolve_repo_path()
+    _ensure_sys_path(repo_path)
+    cred_path = _credentials_path(repo_path)
+
+    try:
+        from utils.indexFacts import IndexFacts
+    except Exception as exc:  # noqa: BLE001
+        raise Neo4jIngestError(f"匯入 IndexFacts 失敗：{exc}") from exc
+
+    symbol = (context.get("symbol") or context.get("ticker") or "").upper()
+    year = context.get("year")
+    quarter = context.get("quarter")
+    transcript_text = context.get("transcript_text") or ""
+
+    if not symbol or not year or not quarter:
+        raise Neo4jIngestError("context 缺少必填欄位：symbol、year、quarter。")
+
+    quarter_label = f"{year}-Q{quarter}"
+
+    idx = IndexFacts(credentials_file=str(cred_path))
+    try:
+        facts: List[Dict[str, Any]] = []
+        if transcript_text:
+            facts.extend(idx.extract_facts_with_context(transcript_text, symbol, quarter_label))
+
+        facts.extend(_financial_facts(context.get("financials"), symbol, quarter_label))
+
+        if facts:
+            triples = idx._to_triples(facts, symbol, quarter_label)
+            idx._push(triples)
+    finally:
+        try:
+            idx.driver.close()
+        except Exception:
+            pass

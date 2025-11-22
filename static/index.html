@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Route B · Earnings Call Analysis</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <p class="eyebrow">Route B · Agentic RAG（stub）</p>
+        <h1>即時財報電話會分析</h1>
+        <p class="lede">
+          輸入公司名稱或代號，挑選法說會季度，後端將透過 FMP 提取逐字稿與財報，再交由 Agentic RAG
+          stub 產生示意分析。
+        </p>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>1. 搜尋公司 / 代號</h2>
+          <div id="status"></div>
+        </div>
+        <div class="search-row">
+          <input id="search-input" type="text" placeholder="例如：AAPL 或 Apple" />
+          <button id="search-btn">搜尋</button>
+        </div>
+        <div id="results" class="results-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>2. 選擇季度</h2>
+          <p id="selected-symbol" class="muted">尚未選擇公司</p>
+        </div>
+        <div class="dates-row">
+          <select id="dates-select">
+            <option value="">請先選擇公司</option>
+          </select>
+          <button id="analyze-btn" disabled>分析</button>
+        </div>
+        <p id="dates-hint" class="muted small"></p>
+      </section>
+
+      <section class="panel grid">
+        <div class="card">
+          <h3>基礎資訊</h3>
+          <div class="meta">
+            <div><span class="label">Symbol</span><span id="meta-symbol">-</span></div>
+            <div><span class="label">Fiscal</span><span id="meta-fiscal">-</span></div>
+            <div><span class="label">Transcript Date</span><span id="meta-date">-</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Agentic RAG 結果（stub）</h3>
+          <div id="agentic-content" class="agentic">
+            <p class="muted">尚未執行分析。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>除錯用 JSON</h3>
+        <pre id="debug-json" class="debug-block">{}</pre>
+      </section>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

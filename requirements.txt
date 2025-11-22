@@ -1,0 +1,14 @@
+accelerate
+fastapi
+httpx
+langchain-openai
+neo4j
+numpy
+openai
+pandas
+python-dotenv
+scikit-learn
+torch
+transformers
+tqdm
+uvicorn[standard]

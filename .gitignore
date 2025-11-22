@@ -1,0 +1,18 @@
+# Local environment and caches
+.env
+__pycache__/
+.venv/
+.DS_Store
+.idea/
+.vscode/
+
+# External research repo (keep as local dependency, not tracked here)
+/EarningsCallAgenticRag/
+
+# Python build
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
