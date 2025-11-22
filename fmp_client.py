@@ -36,13 +36,41 @@ def get_company_profile(symbol: str) -> Dict:
     if not symbol:
         return {}
     _require_api_key()
+    last_error = None
+    data = []
     with _get_client() as client:
-        resp = _get(client, f"profile/{symbol}", params={"apikey": FMP_API_KEY})
-        resp.raise_for_status()
-        data = resp.json() or []
+        # primary: stable/profile
+        try:
+            resp = _get(client, f"profile/{symbol}", params={"apikey": FMP_API_KEY})
+            resp.raise_for_status()
+            data = resp.json() or []
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            data = []
+
+        # fallback: api/v3 profile (有些環境 /stable 可能 404)
+        if not data:
+            try:
+                resp = httpx.get(
+                    f"https://financialmodelingprep.com/api/v3/profile/{symbol}",
+                    params={"apikey": FMP_API_KEY},
+                    timeout=15.0,
+                )
+                resp.raise_for_status()
+                data = resp.json() or []
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                data = []
+
     if not data:
-        raise ValueError(f"Company profile not found for {symbol}")
-    first = data[0] if data else {}
+        detail = ""
+        if isinstance(last_error, httpx.HTTPStatusError):
+            detail = f"status={last_error.response.status_code} body={last_error.response.text[:200]}"
+        elif last_error:
+            detail = str(last_error)
+        raise ValueError(f"Company profile not found for {symbol}. {detail}")
+
+    first = data[0]
     return {
         "company": first.get("companyName") or first.get("name"),
         "exchange": first.get("exchangeShortName") or first.get("exchange"),
