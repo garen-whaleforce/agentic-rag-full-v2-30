@@ -37,7 +37,8 @@ def get_company_profile(symbol: str) -> Dict:
         return {}
     _require_api_key()
     with _get_client() as client:
-        resp = _get(client, f"profile/{symbol}", params={"apikey": FMP_API_KEY})
+        # FMP stable profile expects symbol as query param, not path segment
+        resp = _get(client, "profile", params={"symbol": symbol, "apikey": FMP_API_KEY})
         resp.raise_for_status()
         data = resp.json() or []
     if not data:
