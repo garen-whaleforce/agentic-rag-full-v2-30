@@ -21,6 +21,14 @@ def _get_client() -> httpx.Client:
     return httpx.Client(base_url=FMP_BASE_URL, timeout=15.0)
 
 
+def _get(client: httpx.Client, path: str, params: dict) -> httpx.Response:
+    """
+    Ensure we keep the /stable prefix; paths starting with "/" would drop it.
+    """
+    clean_path = path.lstrip("/")
+    return client.get(clean_path, params=params)
+
+
 def get_company_profile(symbol: str) -> Dict:
     """
     Fetch basic company profile (name, exchange, sector) for enrichment.
@@ -29,7 +37,7 @@ def get_company_profile(symbol: str) -> Dict:
         return {}
     _require_api_key()
     with _get_client() as client:
-        resp = client.get(f"/profile/{symbol}", params={"apikey": FMP_API_KEY})
+        resp = _get(client, f"profile/{symbol}", params={"apikey": FMP_API_KEY})
         resp.raise_for_status()
         data = resp.json() or []
     first = data[0] if data else {}
@@ -47,8 +55,9 @@ def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict
     """
     _require_api_key()
     with _get_client() as client:
-        resp = client.get(
-            "/historical-price-full",
+        resp = _get(
+            client,
+            "historical-price-full",
             params={
                 "symbol": symbol,
                 "from": start.strftime("%Y-%m-%d"),
@@ -122,7 +131,7 @@ def search_symbols(query: str) -> List[Dict]:
     _require_api_key()
     cleaned = query.strip()
     with _get_client() as client:
-        resp = client.get("/search-symbol", params={"query": cleaned, "apikey": FMP_API_KEY})
+        resp = _get(client, "search-symbol", params={"query": cleaned, "apikey": FMP_API_KEY})
         resp.raise_for_status()
         data = resp.json() or []
 
@@ -149,7 +158,7 @@ def get_transcript_dates(symbol: str) -> List[Dict]:
 
     _require_api_key()
     with _get_client() as client:
-        resp = client.get("/earning-call-transcript-dates", params={"symbol": symbol, "apikey": FMP_API_KEY})
+        resp = _get(client, "earning-call-transcript-dates", params={"symbol": symbol, "apikey": FMP_API_KEY})
         resp.raise_for_status()
         data = resp.json() or []
 
@@ -168,8 +177,9 @@ def get_transcript(symbol: str, year: int, quarter: int) -> Dict:
     """
     _require_api_key()
     with _get_client() as client:
-        resp = client.get(
-            "/earning-call-transcript",
+        resp = _get(
+            client,
+            "earning-call-transcript",
             params={"symbol": symbol, "year": year, "quarter": quarter, "apikey": FMP_API_KEY},
         )
         resp.raise_for_status()
@@ -195,9 +205,9 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
     _require_api_key()
     params = {"symbol": symbol, "period": "quarter", "limit": limit, "apikey": FMP_API_KEY}
     with _get_client() as client:
-        income = client.get("/income-statement", params=params)
-        balance = client.get("/balance-sheet-statement", params=params)
-        cash_flow = client.get("/cash-flow-statement", params=params)
+        income = _get(client, "income-statement", params=params)
+        balance = _get(client, "balance-sheet-statement", params=params)
+        cash_flow = _get(client, "cash-flow-statement", params=params)
 
         income.raise_for_status()
         balance.raise_for_status()
