@@ -35,13 +35,34 @@ def _ensure_sys_path(repo_path: Path) -> None:
         sys.path.insert(0, repo_str)
 
 
+def _env_credentials() -> Optional[Dict[str, Any]]:
+    openai_key = os.getenv("OPENAI_API_KEY")
+    neo4j_uri = os.getenv("NEO4J_URI")
+    neo4j_username = os.getenv("NEO4J_USERNAME")
+    neo4j_password = os.getenv("NEO4J_PASSWORD")
+    neo4j_db = os.getenv("NEO4J_DATABASE") or "neo4j"
+    if not all([openai_key, neo4j_uri, neo4j_username, neo4j_password]):
+        return None
+    return {
+        "openai_api_key": openai_key,
+        "neo4j_uri": neo4j_uri,
+        "neo4j_username": neo4j_username,
+        "neo4j_password": neo4j_password,
+        "neo4j_database": neo4j_db,
+    }
+
+
 def _credentials_path(repo_path: Path) -> Path:
     cred = repo_path / "credentials.json"
     if not cred.exists():
-        raise AgenticRagBridgeError(
-            f"外部庫的 credentials.json 未找到：{cred}. "
-            "請依照 EarningsCallAgenticRag README 填入 OpenAI 與 Neo4j 設定。"
-        )
+        env_creds = _env_credentials()
+        if env_creds:
+            cred.write_text(json.dumps(env_creds, indent=2))
+        else:
+            raise AgenticRagBridgeError(
+                f"外部庫的 credentials.json 未找到：{cred}. "
+                "請依照 EarningsCallAgenticRag README 填入 OpenAI 與 Neo4j 設定，或在環境變數提供 OPENAI_API_KEY / NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD。"
+            )
     return cred
 
 
