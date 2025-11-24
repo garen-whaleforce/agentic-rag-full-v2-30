@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
 import httpx
@@ -104,7 +104,7 @@ def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict
     return hist_sorted
 
 
-def compute_post_return(symbol: str, call_date: str, days: int = 3) -> Dict[str, float | None]:
+def compute_post_return(symbol: str, call_date: str, days: int = 3) -> Dict[str, Optional[float]]:
     """
     Compute post-earnings return using daily close prices:
       - start price = first trading day after call_date
@@ -187,7 +187,7 @@ def get_transcript_dates(symbol: str) -> List[Dict]:
     Call FMP Transcripts Dates By Symbol API:
     GET /stable/earning-call-transcript-dates?symbol={symbol}&apikey=FMP_API_KEY
     """
-    def _calendar_from_date(date_str: str) -> Dict[str, int | None]:
+    def _calendar_from_date(date_str: str) -> Dict[str, Optional[int]]:
         try:
             dt = datetime.fromisoformat(date_str[:10])
             quarter = (dt.month - 1) // 3 + 1

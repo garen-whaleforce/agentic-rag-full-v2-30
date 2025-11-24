@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
@@ -66,14 +66,14 @@ def api_analyze(payload: AnalyzeRequest):
 
 @app.get("/api/calls")
 def api_calls(
-    symbol: str | None = Query(None),
-    sector: str | None = Query(None),
-    date_from: str | None = Query(None),
-    date_to: str | None = Query(None),
-    ret_min: float | None = Query(None),
-    ret_max: float | None = Query(None),
-    prediction: str | None = Query(None),
-    correct: bool | None = Query(None),
+    symbol: Optional[str] = Query(None),
+    sector: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    ret_min: Optional[float] = Query(None),
+    ret_max: Optional[float] = Query(None),
+    prediction: Optional[str] = Query(None),
+    correct: Optional[bool] = Query(None),
     sort: str = Query("date_desc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
