@@ -38,6 +38,18 @@ function setStatus(message, tone = "muted") {
   statusEl.style.color = tone === "error" ? "#f87171" : "#9ca3af";
 }
 
+function renderResultsSkeleton() {
+  const placeholder = Array.from({ length: 3 })
+    .map(
+      () => `<div class="skeleton-card">
+        <div class="skeleton-line wide"></div>
+        <div class="skeleton-line mid"></div>
+      </div>`
+    )
+    .join("");
+  resultsEl.innerHTML = placeholder;
+}
+
 async function fetchDatesForSymbol(symbol) {
   try {
     const res = await fetch(`/api/transcript-dates?symbol=${encodeURIComponent(symbol)}`);
@@ -92,8 +104,8 @@ async function searchSymbols() {
     setStatus("請輸入要搜尋的公司名稱或代號");
     return;
   }
+  renderResultsSkeleton();
   setStatus("搜尋中...");
-  renderResults([]);
 
   try {
     const res = await fetch(`/api/symbols?q=${encodeURIComponent(query)}`);
@@ -198,7 +210,7 @@ function renderAgentic(result) {
   };
   const reasonsMarkup =
     reasons && reasons.length
-      ? `<h4>理由</h4><div class="accordion">${reasons
+      ? `<h4>理由</h4><div class="control-row"><button class="btn-ghost" id="reasons-expand-all">展開全部</button><button class="btn-ghost" id="reasons-collapse-all">收合全部</button><button class="btn-ghost" id="reasons-copy">複製理由</button></div><div class="accordion">${reasons
           .map((r, idx) => {
             const summary = typeof r === "string" ? r.split(" ").slice(0, 8).join(" ") + (r.split(" ").length > 8 ? "..." : "") : "理由";
             return `
@@ -247,6 +259,51 @@ function renderAgentic(result) {
       }
     });
   });
+
+  const expandAll = agenticContent.querySelector("#reasons-expand-all");
+  const collapseAll = agenticContent.querySelector("#reasons-collapse-all");
+  const copyBtn = agenticContent.querySelector("#reasons-copy");
+  if (expandAll) {
+    expandAll.addEventListener("click", () => {
+      reasonHeaders.forEach((btn) => {
+        const targetId = btn.getAttribute("data-target");
+        const body = agenticContent.querySelector(`#${targetId}`);
+        btn.setAttribute("aria-expanded", "true");
+        if (body) {
+          body.hidden = false;
+          btn.querySelector(".chevron").style.transform = "rotate(0deg)";
+        }
+      });
+    });
+  }
+  if (collapseAll) {
+    collapseAll.addEventListener("click", () => {
+      reasonHeaders.forEach((btn) => {
+        const targetId = btn.getAttribute("data-target");
+        const body = agenticContent.querySelector(`#${targetId}`);
+        btn.setAttribute("aria-expanded", "false");
+        if (body) {
+          body.hidden = true;
+          btn.querySelector(".chevron").style.transform = "rotate(-90deg)";
+        }
+      });
+    });
+  }
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async () => {
+      const bodies = agenticContent.querySelectorAll(".accordion-body");
+      const text = Array.from(bodies)
+        .map((b) => b.textContent.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      try {
+        await navigator.clipboard.writeText(text || "");
+        setStatus("理由已複製");
+      } catch (e) {
+        setStatus("無法複製理由", "error");
+      }
+    });
+  }
 }
 
 async function runAnalysis() {
@@ -258,6 +315,8 @@ async function runAnalysis() {
     setStatus("請先選擇年度與季度", "error");
     return;
   }
+  agenticContent.innerHTML = `<div class="control-row"><span class="spinner"></span><span class="muted small">分析中...</span></div>`;
+  debugJson.textContent = "{}";
   const [yearStr, quarterStr] = datesSelect.value.split("|");
   const payload = {
     symbol: selectedSymbol,
@@ -302,10 +361,14 @@ async function runAnalysis() {
     kpiPred.textContent = agent.prediction || "N/A";
     kpiConf.textContent =
       agent.confidence != null ? `${Math.round((agent.confidence || 0) * 100)}%` : "-";
-    kpiReturn.textContent =
-      postReturn != null ? `${(postReturn * 100).toFixed(2)}%` : "未計算";
+    kpiReturn.textContent = postReturn != null ? `${(postReturn * 100).toFixed(2)}%` : "未計算";
     const cost = tokenUsage.cost_usd != null ? `$${tokenUsage.cost_usd.toFixed(4)}` : "N/A";
     kpiCost.textContent = `${cost}`;
+    kpiReturn.classList.remove("pos", "neg");
+    if (postReturn != null) {
+      if (postReturn > 0) kpiReturn.classList.add("pos");
+      else if (postReturn < 0) kpiReturn.classList.add("neg");
+    }
 
     const clean = (val) => {
       if (!val) return null;
