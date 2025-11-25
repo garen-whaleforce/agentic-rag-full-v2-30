@@ -262,6 +262,45 @@ button:not(:disabled):active {
   word-break: break-word;
 }
 
+.accordion {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.accordion-item + .accordion-item {
+  border-top: 1px solid var(--border);
+}
+
+.accordion-header {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.accordion-header .chevron {
+  transition: transform 0.2s ease;
+}
+
+.accordion-header[aria-expanded="false"] .chevron {
+  transform: rotate(-90deg);
+}
+
+.accordion-body {
+  padding: 12px 14px 14px;
+  background: #ffffff;
+  color: var(--text);
+}
+
 .meta {
   display: grid;
   gap: 10px;

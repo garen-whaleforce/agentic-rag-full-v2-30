@@ -14,6 +14,8 @@ const metaSymbol = document.getElementById("meta-symbol");
 const metaFiscal = document.getElementById("meta-fiscal");
 const metaCalendar = document.getElementById("meta-calendar");
 const metaDate = document.getElementById("meta-date");
+const metaCompany = document.getElementById("meta-company");
+const metaSector = document.getElementById("meta-sector");
 const agenticContent = document.getElementById("agentic-content");
 const debugJson = document.getElementById("debug-json");
 const kpiPred = document.getElementById("kpi-pred");
@@ -278,6 +280,8 @@ async function runAnalysis() {
       metaCalendar.textContent = "-";
     }
     metaDate.textContent = data.transcript_date || "-";
+    metaCompany.textContent = data.context?.company || data.company || "-";
+    metaSector.textContent = data.context?.sector || data.sector || "-";
     renderAgentic(data.agentic_result);
     debugJson.textContent = JSON.stringify(data, null, 2);
 
