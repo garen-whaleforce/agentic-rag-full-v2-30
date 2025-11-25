@@ -58,6 +58,7 @@ def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict
     Fetch daily historical prices between start and end (inclusive).
     """
     _require_api_key()
+    use_server_window = True
     params = {
         "symbol": symbol,
         "from": start.strftime("%Y-%m-%d"),
@@ -80,6 +81,7 @@ def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict
         # fallback: if empty, try without date filters to get recent window then filter locally
         if (isinstance(data, dict) and not data.get("historical")) or (isinstance(data, list) and not data):
             try:
+                use_server_window = False
                 resp = _get(client, "historical-price-eod/full", params={"symbol": symbol, "apikey": FMP_API_KEY})
                 resp.raise_for_status()
                 data = resp.json() or {}
@@ -94,7 +96,7 @@ def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict
         hist = []
 
     # If fetched without date filters, slice to requested window
-    if hist and (not params.get("from") or not params.get("to")):
+    if hist and not use_server_window:
         start_str = start.strftime("%Y-%m-%d")
         end_str = end.strftime("%Y-%m-%d")
         hist = [h for h in hist if start_str <= h.get("date", "") <= end_str]
