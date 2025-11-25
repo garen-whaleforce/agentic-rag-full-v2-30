@@ -70,7 +70,11 @@ def analyze_earnings(symbol: str, year: int, quarter: int) -> Dict:
     High-level orchestration: build context and run the Agentic RAG bridge.
     """
     # Cache lookup: reuse previous full payload for the same ticker+quarter
-    cached = get_cached_payload(symbol, year, quarter)
+    try:
+        cache_ttl = int(os.getenv("RESULT_CACHE_TTL_MIN", "1440"))
+    except Exception:
+        cache_ttl = None
+    cached = get_cached_payload(symbol, year, quarter, max_age_minutes=cache_ttl)
     if cached:
         return cached
 
@@ -134,7 +138,8 @@ def analyze_earnings(symbol: str, year: int, quarter: int) -> Dict:
     }
     # Cache the full payload for repeated runs
     try:
-        set_cached_payload(symbol, year, quarter, payload)
+        if context.get("post_earnings_return") is not None:
+            set_cached_payload(symbol, year, quarter, payload)
     except Exception as exc:
         logger.exception("set_cached_payload failed", exc_info=exc)
 

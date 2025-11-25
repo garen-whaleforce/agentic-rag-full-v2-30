@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 import httpx
 from dotenv import load_dotenv
+from storage import get_fmp_cache, set_fmp_cache
 
 load_dotenv()
 
@@ -74,6 +75,12 @@ def get_company_profile(symbol: str) -> Dict:
     if not symbol:
         return {}
     _require_api_key()
+    cache_ttl = int(os.getenv("PROFILE_CACHE_MIN", "1440"))
+    cache_key = f"fmp:profile:{symbol.upper()}"
+    cached = get_fmp_cache(cache_key, max_age_minutes=cache_ttl)
+    if cached:
+        return cached
+
     client = _get_client()
     # FMP stable profile expects symbol as query param, not path segment
     resp = _get(client, "profile", params={"symbol": symbol, "apikey": FMP_API_KEY})
@@ -89,6 +96,8 @@ def get_company_profile(symbol: str) -> Dict:
         "sector": first.get("sector"),
         "industry": first.get("industry"),
     }
+    set_fmp_cache(cache_key, out)
+    return out
 
 
 def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict]:
@@ -267,6 +276,12 @@ def get_transcript(symbol: str, year: int, quarter: int) -> Dict:
     Call FMP Earnings Transcript API.
     """
     _require_api_key()
+    cache_ttl = int(os.getenv("TRANSCRIPT_CACHE_MIN", "10080"))  # default 7 days
+    cache_key = f"fmp:transcript:{symbol.upper()}:{year}:{quarter}"
+    cached = get_fmp_cache(cache_key, max_age_minutes=cache_ttl)
+    if cached:
+        return cached
+
     client = _get_client()
     resp = _get(
         client,
@@ -287,6 +302,8 @@ def get_transcript(symbol: str, year: int, quarter: int) -> Dict:
         "date": first.get("date") or first.get("reportDate"),
         "content": first.get("content") or "",
     }
+    set_fmp_cache(cache_key, out)
+    return out
 
 
 def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
@@ -294,6 +311,12 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
     Fetch recent quarterly financial statements.
     """
     _require_api_key()
+    cache_ttl = int(os.getenv("FIN_CACHE_MIN", "1440"))
+    cache_key = f"fmp:financials:{symbol.upper()}:{limit}"
+    cached = get_fmp_cache(cache_key, max_age_minutes=cache_ttl)
+    if cached:
+        return cached
+
     params = {"symbol": symbol, "period": "quarter", "limit": limit, "apikey": FMP_API_KEY}
     client = _get_client()
     income = _get(client, "income-statement", params=params)
@@ -309,6 +332,7 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
         "balance": balance.json() or [],
         "cashFlow": cash_flow.json() or [],
     }
+    # unreachable
 
 
 def get_earnings_context(symbol: str, year: int, quarter: int) -> Dict:

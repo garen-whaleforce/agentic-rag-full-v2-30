@@ -61,6 +61,15 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fmp_cache (
+                cache_key TEXT PRIMARY KEY,
+                payload_json TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
 
 
 def record_analysis(
@@ -178,18 +187,27 @@ def get_call(job_id: str) -> Optional[Dict[str, Any]]:
     return data
 
 
-def get_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int) -> Optional[Dict[str, Any]]:
+def get_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int, max_age_minutes: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """
     Return cached full analysis payload for the given symbol/year/quarter if present.
     """
     init_db()
     with _get_conn() as conn:
         row = conn.execute(
-            "SELECT payload_json FROM call_cache WHERE symbol=? AND fiscal_year=? AND fiscal_quarter=?",
+            "SELECT payload_json, created_at FROM call_cache WHERE symbol=? AND fiscal_year=? AND fiscal_quarter=?",
             (symbol.upper(), fiscal_year, fiscal_quarter),
         ).fetchone()
     if not row:
         return None
+    if max_age_minutes is not None:
+        try:
+            cur = sqlite3.connect(":memory:")
+            cur.execute("SELECT datetime('now','-%d minutes') AS cutoff" % max_age_minutes)
+            cutoff = cur.fetchone()[0]
+            if row["created_at"] < cutoff:
+                return None
+        except Exception:
+            pass
     try:
         return json.loads(row["payload_json"])
     except Exception:
@@ -208,4 +226,46 @@ def set_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int, paylo
             VALUES (?, ?, ?, ?)
             """,
             (symbol.upper(), fiscal_year, fiscal_quarter, json.dumps(payload or {})),
+        )
+
+
+def get_fmp_cache(cache_key: str, max_age_minutes: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """
+    Fetch cached FMP payload by key. If max_age_minutes is provided, skip stale entries.
+    """
+    init_db()
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT payload_json, created_at FROM fmp_cache WHERE cache_key=?",
+            (cache_key,),
+        ).fetchone()
+    if not row:
+        return None
+    if max_age_minutes is not None:
+        try:
+            cur = sqlite3.connect(":memory:")
+            cur.execute("SELECT datetime('now','-%d minutes') AS cutoff" % max_age_minutes)
+            cutoff = cur.fetchone()[0]
+            if row["created_at"] < cutoff:
+                return None
+        except Exception:
+            pass
+    try:
+        return json.loads(row["payload_json"])
+    except Exception:
+        return None
+
+
+def set_fmp_cache(cache_key: str, payload: Dict[str, Any]) -> None:
+    """
+    Store FMP payload by key.
+    """
+    init_db()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO fmp_cache (cache_key, payload_json)
+            VALUES (?, ?)
+            """,
+            (cache_key, json.dumps(payload or {})),
         )
