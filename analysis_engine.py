@@ -1,9 +1,10 @@
+import os
 from datetime import datetime
 from typing import Dict
 from uuid import uuid4
 
 from agentic_rag_bridge import AgenticRagBridgeError, run_single_call_from_context
-from neo4j_ingest import Neo4jIngestError, ingest_context_into_neo4j
+from neo4j_ingest import Neo4jIngestError, ingest_context_into_neo4j, ingest_recent_history_into_neo4j
 from fmp_client import get_earnings_context
 from storage import record_analysis
 
@@ -12,6 +13,28 @@ def run_agentic_rag(context: Dict) -> Dict:
     """
     Call the real Agentic RAG pipeline via the bridge module.
     """
+    def _add_ingest_warning(msg: str) -> None:
+        if not msg:
+            return
+        if context.get("ingest_warning"):
+            context["ingest_warning"] = f"{context['ingest_warning']} | {msg}"
+        else:
+            context["ingest_warning"] = msg
+
+    # First, backfill recent historical quarters so helper agents have past facts.
+    history_quarters = 4
+    try:
+        history_quarters = int(os.getenv("INGEST_HISTORY_QUARTERS", "4"))
+    except Exception:
+        history_quarters = 4
+
+    try:
+        ingest_recent_history_into_neo4j(context, max_quarters=history_quarters)
+    except Neo4jIngestError as exc:
+        _add_ingest_warning(f"Historical ingest failed: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        _add_ingest_warning(f"Historical ingest failed: {exc}")
+
     # On-the-fly Neo4j ingestion so helper agents have facts to use.
     try:
         ingest_context_into_neo4j(context)

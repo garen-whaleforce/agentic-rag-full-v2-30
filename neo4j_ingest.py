@@ -101,8 +101,88 @@ def _financial_facts(financials: Optional[Dict[str, Any]], ticker: str, quarter_
                 "value": value,
                 "reason": "Latest quarter financial snapshot",
             }
-        )
+            )
     return facts
+
+
+def ingest_recent_history_into_neo4j(context: Dict[str, Any], max_quarters: int = 4) -> None:
+    """
+    Best-effort: 抓取同一 ticker 過去幾季的 transcript，寫入 Neo4j，讓歷史型 Agent 有可用 Facts。
+    """
+    symbol = (context.get("symbol") or context.get("ticker") or "").upper()
+    year = context.get("year")
+    quarter = context.get("quarter")
+    if not symbol or not year or not quarter:
+        raise Neo4jIngestError("context 缺少必填欄位：symbol、year、quarter。")
+
+    repo_path = _resolve_repo_path()
+    _ensure_sys_path(repo_path)
+    cred_path = _credentials_path(repo_path)
+
+    from utils.indexFacts import IndexFacts
+    from fmp_client import get_transcript_dates, get_transcript
+
+    def _q_key(y: int, q: int) -> tuple[int, int]:
+        return (int(y), int(q))
+
+    def _has_facts(driver, ticker: str, quarter_label: str) -> bool:
+        try:
+            with driver.session() as ses:
+                rec = ses.run(
+                    "MATCH (f:Fact {ticker:$t, quarter:$q}) RETURN COUNT(f) AS cnt",
+                    {"t": ticker, "q": quarter_label},
+                ).single()
+                return bool(rec and rec.get("cnt", 0) > 0)
+        except Exception:
+            return False
+
+    try:
+        all_dates = get_transcript_dates(symbol)
+    except Exception as exc:  # noqa: BLE001
+        raise Neo4jIngestError(f"取得過往 transcript 日期失敗：{exc}") from exc
+
+    if not all_dates:
+        return
+
+    # 挑出目標季度之前的資料，取最近 max_quarters 筆
+    past = []
+    for item in all_dates:
+        try:
+            fy = int(item.get("year") or item.get("fiscalYear") or item.get("calendar_year"))
+            fq = int(item.get("quarter") or item.get("fiscalQuarter") or item.get("calendar_quarter"))
+        except Exception:
+            continue
+        if fy < year or (fy == year and fq < quarter):
+            past.append({"year": fy, "quarter": fq})
+    past_sorted = sorted(past, key=lambda x: _q_key(x["year"], x["quarter"]), reverse=True)[:max_quarters]
+
+    if not past_sorted:
+        return
+
+    idx = IndexFacts(credentials_file=str(cred_path))
+    try:
+        for pq in past_sorted:
+            q_label = f"{pq['year']}-Q{pq['quarter']}"
+            if _has_facts(idx.driver, symbol, q_label):
+                continue
+            try:
+                t = get_transcript(symbol, pq["year"], pq["quarter"])
+                transcript_text = t.get("content") or ""
+                if not transcript_text.strip():
+                    continue
+                facts = idx.extract_facts_with_context(transcript_text, symbol, q_label)
+                if not facts:
+                    continue
+                triples = idx._to_triples(facts, symbol, q_label)
+                idx._push(triples)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[AGENT LOG] 略過歷史匯入 {symbol} {q_label}：{exc}")
+                continue
+    finally:
+        try:
+            idx.driver.close()
+        except Exception:
+            pass
 
 
 def ingest_context_into_neo4j(context: Dict[str, Any]) -> None:
