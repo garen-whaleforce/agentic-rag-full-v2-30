@@ -295,8 +295,7 @@ async function runAnalysis() {
     kpiReturn.textContent =
       postReturn != null ? `${(postReturn * 100).toFixed(2)}%` : "未計算";
     const cost = tokenUsage.cost_usd != null ? `$${tokenUsage.cost_usd.toFixed(4)}` : "N/A";
-    const tok = tokenUsage.total_tokens != null ? ` · Tokens ${tokenUsage.total_tokens}` : "";
-    kpiCost.textContent = `${cost}${tok}`;
+    kpiCost.textContent = `${cost}`;
 
     const clean = (val) => {
       if (!val) return null;
