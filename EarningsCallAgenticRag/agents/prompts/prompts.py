@@ -380,14 +380,14 @@ whose primary businesses are in the same or very closely related industries.
 
 Selection rules:
 Focus on companies whose core business is in the same value chain
-  (similar products, services, and end-markets), not just the same GICS sector.
+ (similar products, services, and end-markets), not just the same GICS sector.
 Prefer companies listed in the U.S. or as ADRs when possible.
 Prefer similar business model and revenue mix (e.g., electronic test and
-  measurement equipment, instrumentation, or closely related solutions).
+measurement equipment, instrumentation, or closely related solutions).
 Avoid ETFs, indices, funds, preferred shares, warrants, and companies that
-  have been acquired/delisted.
+have been acquired/delisted.
 Market cap and scale should be broadly comparable (roughly within
-  0.25x–4x of the target company, if possible).
+ 0.25x–4x of the target company, if possible).
 
 Only output a Python-style list of 5 unique ticker symbols, with no explanation, like:
 ["AAPL", "GOOGL", "AMZN", "MSFT", "ORCL"]
