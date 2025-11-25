@@ -49,12 +49,37 @@
       </section>
 
       <section class="panel card-full">
-        <h3>基礎資訊</h3>
-        <div class="meta meta-inline">
-          <div><span class="label">Symbol</span><span id="meta-symbol">-</span></div>
-          <div><span class="label">Fiscal</span><span id="meta-fiscal">-</span></div>
-          <div><span class="label">Calendar</span><span id="meta-calendar">-</span></div>
-          <div><span class="label">Transcript Date</span><span id="meta-date">-</span></div>
+        <div class="info-kpi-grid">
+          <div>
+            <h3>基礎資訊</h3>
+            <div class="meta meta-inline">
+              <div><span class="label">Symbol</span><span id="meta-symbol">-</span></div>
+              <div><span class="label">Fiscal</span><span id="meta-fiscal">-</span></div>
+              <div><span class="label">Calendar</span><span id="meta-calendar">-</span></div>
+              <div><span class="label">Transcript Date</span><span id="meta-date">-</span></div>
+            </div>
+          </div>
+          <div>
+            <h3>總覽 KPI</h3>
+            <div class="kpi-grid">
+              <div class="kpi-card">
+                <span class="label">Prediction</span>
+                <div id="kpi-pred" class="kpi-value">-</div>
+              </div>
+              <div class="kpi-card">
+                <span class="label">Confidence</span>
+                <div id="kpi-conf" class="kpi-value">-</div>
+              </div>
+              <div class="kpi-card">
+                <span class="label">Post Return (3D)</span>
+                <div id="kpi-return" class="kpi-value">-</div>
+              </div>
+              <div class="kpi-card">
+                <span class="label">Token / Cost</span>
+                <div id="kpi-cost" class="kpi-value small">-</div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -62,28 +87,6 @@
         <h3>Agentic RAG 結果</h3>
         <div id="agentic-content" class="agentic">
           <p class="muted">尚未執行分析。</p>
-        </div>
-      </section>
-
-      <section class="panel card-full">
-        <h3>總覽 KPI</h3>
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <span class="label">Prediction</span>
-            <div id="kpi-pred" class="kpi-value">-</div>
-          </div>
-          <div class="kpi-card">
-            <span class="label">Confidence</span>
-            <div id="kpi-conf" class="kpi-value">-</div>
-          </div>
-          <div class="kpi-card">
-            <span class="label">Post Return (3D)</span>
-            <div id="kpi-return" class="kpi-value">-</div>
-          </div>
-          <div class="kpi-card">
-            <span class="label">Token / Cost</span>
-            <div id="kpi-cost" class="kpi-value small">-</div>
-          </div>
         </div>
       </section>
 
