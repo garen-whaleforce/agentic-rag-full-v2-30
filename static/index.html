@@ -48,27 +48,31 @@
         <p id="dates-hint" class="muted small"></p>
       </section>
 
-      <section class="panel grid">
-        <div class="card">
-          <h3>基礎資訊</h3>
-          <div class="meta">
-            <div><span class="label">Symbol</span><span id="meta-symbol">-</span></div>
-            <div><span class="label">Fiscal</span><span id="meta-fiscal">-</span></div>
-            <div><span class="label">Calendar</span><span id="meta-calendar">-</span></div>
-            <div><span class="label">Transcript Date</span><span id="meta-date">-</span></div>
-          </div>
-        </div>
-        <div class="card">
-          <h3>Agentic RAG 結果</h3>
-          <div id="agentic-content" class="agentic">
-            <p class="muted">尚未執行分析。</p>
-          </div>
+      <section class="panel card-full">
+        <h3>基礎資訊</h3>
+        <div class="meta meta-inline">
+          <div><span class="label">Symbol</span><span id="meta-symbol">-</span></div>
+          <div><span class="label">Fiscal</span><span id="meta-fiscal">-</span></div>
+          <div><span class="label">Calendar</span><span id="meta-calendar">-</span></div>
+          <div><span class="label">Transcript Date</span><span id="meta-date">-</span></div>
         </div>
       </section>
 
-      <section class="panel">
-        <h3>除錯用 JSON</h3>
-        <pre id="debug-json" class="debug-block">{}</pre>
+      <section class="panel card-full">
+        <h3>Agentic RAG 結果</h3>
+        <div id="agentic-content" class="agentic">
+          <p class="muted">尚未執行分析。</p>
+        </div>
+      </section>
+
+      <section class="panel collapsible">
+        <button class="collapse-toggle" type="button" aria-expanded="false" aria-controls="debug-json">
+          <span>除錯用 JSON</span>
+          <span class="chevron">▼</span>
+        </button>
+        <div id="debug-json-wrap" class="collapse-body" hidden>
+          <pre id="debug-json" class="debug-block">{}</pre>
+        </div>
       </section>
     </div>
 

@@ -177,7 +177,21 @@ function renderAgentic(result) {
       : "";
   const reasonsMarkup =
     reasons && reasons.length
-      ? `<h4>理由</h4><ul>${reasons.map((r) => `<li>${r}</li>`).join("")}</ul>`
+      ? `<h4>理由</h4><div class="accordion">${reasons
+          .map((r, idx) => {
+            const summary = typeof r === "string" ? r.split(" ").slice(0, 8).join(" ") + (r.split(" ").length > 8 ? "..." : "") : "理由";
+            return `
+            <div class="accordion-item">
+              <button class="accordion-header" type="button" aria-expanded="false" data-target="reason-${idx}">
+                <span>${summary}</span>
+                <span class="chevron">▼</span>
+              </button>
+              <div id="reason-${idx}" class="accordion-body" hidden>
+                <p>${r}</p>
+              </div>
+            </div>`;
+          })
+          .join("")}</div>`
       : "";
   const nextStepsMarkup =
     next_steps && next_steps.length
@@ -194,6 +208,26 @@ function renderAgentic(result) {
     ${reasonsMarkup}
     ${nextStepsMarkup}
   `;
+
+  // Wire up accordion toggles for reasons
+  const reasonHeaders = agenticContent.querySelectorAll(".accordion-header");
+  reasonHeaders.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-target");
+      const body = agenticContent.querySelector(`#${targetId}`);
+      const expanded = btn.getAttribute("aria-expanded") === "true";
+      btn.setAttribute("aria-expanded", String(!expanded));
+      if (body) {
+        if (expanded) {
+          body.hidden = true;
+          btn.querySelector(".chevron").style.transform = "rotate(-90deg)";
+        } else {
+          body.hidden = false;
+          btn.querySelector(".chevron").style.transform = "rotate(0deg)";
+        }
+      }
+    });
+  });
 }
 
 async function runAnalysis() {
@@ -252,6 +286,28 @@ searchInput.addEventListener("keyup", (e) => {
   if (e.key === "Enter") searchSymbols();
 });
 analyzeBtn.addEventListener("click", runAnalysis);
+
+// Collapsible debug JSON
+const debugToggle = document.querySelector(".collapse-toggle");
+const debugBody = document.getElementById("debug-json-wrap");
+if (debugToggle && debugBody) {
+  debugToggle.addEventListener("click", () => {
+    const expanded = debugToggle.getAttribute("aria-expanded") === "true";
+    debugToggle.setAttribute("aria-expanded", String(!expanded));
+    const chevron = debugToggle.querySelector(".chevron");
+    if (!expanded) {
+      debugBody.hidden = false;
+      chevron.style.transform = "rotate(0deg)";
+    } else {
+      debugBody.hidden = true;
+      chevron.style.transform = "rotate(-90deg)";
+    }
+  });
+  // start collapsed
+  debugBody.hidden = true;
+  const chevron = debugToggle.querySelector(".chevron");
+  if (chevron) chevron.style.transform = "rotate(-90deg)";
+}
 
 // 初始狀態
 setStatus("輸入公司名稱或代號開始搜尋");

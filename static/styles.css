@@ -192,6 +192,10 @@ button:not(:disabled):active {
   box-shadow: var(--shadow);
 }
 
+.card-full {
+  width: 100%;
+}
+
 .meta {
   display: grid;
   gap: 10px;
@@ -215,6 +219,42 @@ button:not(:disabled):active {
   padding: 12px;
   border: 1px solid #111827;
   overflow-x: auto;
+}
+
+.collapsible {
+  padding: 0;
+  overflow: hidden;
+}
+
+.collapse-toggle {
+  width: 100%;
+  padding: 16px 18px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.collapse-toggle .chevron {
+  transition: transform 0.2s ease;
+}
+
+.collapse-body {
+  border-top: 1px solid var(--border);
+  padding: 12px 14px 16px;
+}
+
+.collapsed .collapse-body {
+  display: none;
+}
+
+.collapsed .collapse-toggle .chevron {
+  transform: rotate(-90deg);
 }
 
 table {
