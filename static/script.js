@@ -186,11 +186,6 @@ function renderAgentic(result) {
   const { prediction, confidence, summary, reasons, next_steps, metadata } = result;
   const engineLabel = (metadata && metadata.engine) || "Agentic RAG";
   const tokenUsage = (result.raw && result.raw.token_usage) || metadata?.token_usage || {};
-  const costLine = tokenUsage.cost_usd != null ? `<div class="muted small">Cost: $${tokenUsage.cost_usd.toFixed(4)}</div>` : "";
-  const tokenLine =
-    tokenUsage.total_tokens != null
-      ? `<div class="muted small">Tokens: ${tokenUsage.total_tokens} (in ${tokenUsage.input_tokens ?? "?"}, out ${tokenUsage.output_tokens ?? "?"})</div>`
-      : "";
   const reasonsMarkup =
     reasons && reasons.length
       ? `<h4>理由</h4><div class="accordion">${reasons
@@ -217,8 +212,6 @@ function renderAgentic(result) {
 
   agenticContent.innerHTML = `
     <div class="muted small">${engineLabel}</div>
-    ${costLine}
-    ${tokenLine}
     <h4>${prediction || "N/A"} ${confidenceBadge}</h4>
     <p>${summary || ""}</p>
     ${reasonsMarkup}
