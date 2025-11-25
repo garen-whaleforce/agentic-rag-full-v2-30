@@ -49,6 +49,18 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_prediction ON call_results(prediction)"
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS call_cache (
+                symbol TEXT NOT NULL,
+                fiscal_year INTEGER NOT NULL,
+                fiscal_quarter INTEGER NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (symbol, fiscal_year, fiscal_quarter)
+            )
+            """
+        )
 
 
 def record_analysis(
@@ -164,3 +176,36 @@ def get_call(job_id: str) -> Optional[Dict[str, Any]]:
     data["agent_result"] = json.loads(data.pop("agent_result_json") or "{}")
     data["token_usage"] = json.loads(data.pop("token_usage_json") or "{}")
     return data
+
+
+def get_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int) -> Optional[Dict[str, Any]]:
+    """
+    Return cached full analysis payload for the given symbol/year/quarter if present.
+    """
+    init_db()
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM call_cache WHERE symbol=? AND fiscal_year=? AND fiscal_quarter=?",
+            (symbol.upper(), fiscal_year, fiscal_quarter),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["payload_json"])
+    except Exception:
+        return None
+
+
+def set_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int, payload: Dict[str, Any]) -> None:
+    """
+    Store the full analysis payload for reuse.
+    """
+    init_db()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO call_cache (symbol, fiscal_year, fiscal_quarter, payload_json)
+            VALUES (?, ?, ?, ?)
+            """,
+            (symbol.upper(), fiscal_year, fiscal_quarter, json.dumps(payload or {})),
+        )

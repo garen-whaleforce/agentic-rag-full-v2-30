@@ -7,7 +7,7 @@ from uuid import uuid4
 from agentic_rag_bridge import AgenticRagBridgeError, run_single_call_from_context
 from neo4j_ingest import Neo4jIngestError, ingest_context_into_neo4j, ingest_recent_history_into_neo4j
 from fmp_client import get_earnings_context
-from storage import record_analysis
+from storage import record_analysis, get_cached_payload, set_cached_payload
 
 
 def run_agentic_rag(context: Dict) -> Dict:
@@ -69,6 +69,11 @@ def analyze_earnings(symbol: str, year: int, quarter: int) -> Dict:
     """
     High-level orchestration: build context and run the Agentic RAG bridge.
     """
+    # Cache lookup: reuse previous full payload for the same ticker+quarter
+    cached = get_cached_payload(symbol, year, quarter)
+    if cached:
+        return cached
+
     job_id = str(uuid4())
     context = get_earnings_context(symbol, year, quarter)
     agentic_result = run_agentic_rag(context)
@@ -114,7 +119,7 @@ def analyze_earnings(symbol: str, year: int, quarter: int) -> Dict:
         # Do not block API if persistence fails
         logger.exception("record_analysis failed", exc_info=exc)
 
-    return {
+    payload = {
         "symbol": symbol,
         "year": year,
         "quarter": quarter,
@@ -125,4 +130,11 @@ def analyze_earnings(symbol: str, year: int, quarter: int) -> Dict:
         "agentic_result": agentic_result,
         "context": context,
     }
+    # Cache the full payload for repeated runs
+    try:
+        set_cached_payload(symbol, year, quarter, payload)
+    except Exception as exc:
+        logger.exception("set_cached_payload failed", exc_info=exc)
+
+    return payload
 logger = logging.getLogger(__name__)
