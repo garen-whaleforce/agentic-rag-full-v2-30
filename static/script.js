@@ -186,6 +186,16 @@ function renderAgentic(result) {
   const { prediction, confidence, summary, reasons, next_steps, metadata } = result;
   const engineLabel = "";
   const tokenUsage = (result.raw && result.raw.token_usage) || metadata?.token_usage || {};
+  const formatReasonBody = (text) => {
+    if (!text) return "<p>-</p>";
+    const parts = String(text)
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    return parts
+      .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+      .join("") || `<p>${text}</p>`;
+  };
   const reasonsMarkup =
     reasons && reasons.length
       ? `<h4>理由</h4><div class="accordion">${reasons
@@ -198,7 +208,7 @@ function renderAgentic(result) {
                 <span class="chevron">▼</span>
               </button>
               <div id="reason-${idx}" class="accordion-body" hidden>
-                <p>${r}</p>
+                ${formatReasonBody(r)}
               </div>
             </div>`;
           })
