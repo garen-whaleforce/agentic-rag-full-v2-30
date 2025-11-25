@@ -32,6 +32,10 @@ const detailHistSummary = document.getElementById("detail-hist-summary");
 const detailPerfSummary = document.getElementById("detail-perf-summary");
 const detailBaselineSummary = document.getElementById("detail-baseline-summary");
 const detailTokensSummary = document.getElementById("detail-tokens-summary");
+const batchInput = document.getElementById("batch-input");
+const batchBtn = document.getElementById("batch-btn");
+const batchStatus = document.getElementById("batch-status");
+const batchResults = document.getElementById("batch-results");
 
 function setStatus(message, tone = "muted") {
   statusEl.textContent = message;
@@ -411,6 +415,9 @@ searchInput.addEventListener("keyup", (e) => {
   if (e.key === "Enter") searchSymbols();
 });
 analyzeBtn.addEventListener("click", runAnalysis);
+if (batchBtn) {
+  batchBtn.addEventListener("click", runBatch);
+}
 
 // Collapsible debug JSON
 const debugToggle = document.querySelector(".collapse-toggle");
@@ -459,4 +466,61 @@ function wireDetailToggles() {
     const body = document.getElementById(targetId);
     if (body) body.hidden = true;
   });
+}
+
+async function runBatch() {
+  const raw = batchInput.value || "";
+  const tickers = raw
+    .split(/[\n,]/)
+    .map((t) => t.trim().toUpperCase())
+    .filter(Boolean);
+  if (!tickers.length) {
+    batchStatus.textContent = "請輸入至少一個 ticker";
+    return;
+  }
+  batchStatus.innerHTML = `<span class="spinner"></span> 批次分析中...`;
+  batchResults.innerHTML = "";
+  try {
+    const res = await fetch("/api/batch-analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tickers, latest_only: true }),
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    const data = await res.json();
+    const rows = data.results || [];
+    renderBatch(rows);
+    batchStatus.textContent = `完成：${rows.length} 檔`;
+  } catch (err) {
+    console.error(err);
+    batchStatus.textContent = `批次失敗：${err.message}`;
+  }
+}
+
+function renderBatch(rows) {
+  if (!rows || !rows.length) {
+    batchResults.innerHTML = '<p class="muted small">無結果</p>';
+    return;
+  }
+  const header = `<div class="row header"><div>Ticker</div><div>狀態</div><div>Prediction</div><div>Conf.</div><div>Post Ret</div></div>`;
+  const body = rows
+    .map((r) => {
+      const agent = (r.payload && r.payload.agentic_result) || {};
+      const pred = agent.prediction || "-";
+      const conf = agent.confidence != null ? `${Math.round((agent.confidence || 0) * 100)}%` : "-";
+      const post = r.payload ? r.payload.post_earnings_return : null;
+      const postTxt = post != null ? `${(post * 100).toFixed(2)}%` : "-";
+      const badge = r.status === "ok" ? '<span class="badge">OK</span>' : '<span class="badge" style="background: rgba(220,38,38,0.15); color:#dc2626; border-color: rgba(220,38,38,0.4);">Error</span>';
+      return `<div class="row">
+        <div>${r.symbol || "-"}</div>
+        <div>${badge} ${r.error || ""}</div>
+        <div>${pred}</div>
+        <div>${conf}</div>
+        <div>${postTxt}</div>
+      </div>`;
+    })
+    .join("");
+  batchResults.innerHTML = header + body;
 }

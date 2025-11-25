@@ -86,6 +86,47 @@ h1 {
   flex-direction: column;
 }
 
+.batch-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+}
+
+#batch-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--text);
+  padding: 12px 14px;
+  font-size: 15px;
+}
+
+.batch-table {
+  margin-top: 12px;
+}
+
+.batch-table .row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(100px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fdfefe;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow);
+}
+
+.batch-table .row.header {
+  background: #eef2ff;
+  font-weight: 700;
+}
+
+.batch-table .badge {
+  justify-self: start;
+}
 .panel-header {
   display: flex;
   align-items: flex-start;

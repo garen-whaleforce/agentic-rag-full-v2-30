@@ -8,10 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from uuid import uuid4
+import asyncio
 
 from analysis_engine import analyze_earnings
 from fmp_client import close_fmp_client, get_transcript_dates, search_symbols, _require_api_key
 from storage import get_call, list_calls, init_db, ensure_db_writable
+from typing import Dict
 
 load_dotenv()
 
@@ -48,6 +51,10 @@ class AnalyzeRequest(BaseModel):
     year: int = Field(..., description="Fiscal year")
     quarter: int = Field(..., description="Fiscal quarter (1-4)")
 
+class BatchAnalyzeRequest(BaseModel):
+    tickers: list[str] = Field(..., description="List of ticker symbols")
+    latest_only: bool = Field(True, description="Always pick latest available quarter")
+
 
 @app.get("/api/symbols")
 def api_symbols(q: str = Query("", description="Search term for company name or ticker")) -> List[dict]:
@@ -76,6 +83,46 @@ def api_analyze(payload: AnalyzeRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/batch-analyze")
+async def api_batch_analyze(payload: BatchAnalyzeRequest):
+    """
+    Simple batch endpoint: takes tickers, fetches latest quarter per ticker (if latest_only),
+    and analyzes sequentially. Returns results inline for simplicity.
+    """
+    tickers = [t.strip().upper() for t in payload.tickers if t.strip()]
+    if not tickers:
+        raise HTTPException(status_code=400, detail="tickers is required")
+
+    results: List[Dict] = []
+
+    async def _analyze_one(sym: str):
+        try:
+            # latest quarter if requested
+            year = None
+            quarter = None
+            if payload.latest_only:
+                dates = get_transcript_dates(sym)
+                valid = [d for d in dates if d.get("year") and d.get("quarter")]
+                if not valid:
+                    return {"symbol": sym, "status": "error", "error": "no transcript dates"}
+                latest = sorted(valid, key=lambda x: (int(x["year"]), int(x["quarter"])), reverse=True)[0]
+                year = int(latest["year"])
+                quarter = int(latest["quarter"])
+            res = analyze_earnings(sym, year, quarter) if year and quarter else None
+            return {
+                "symbol": sym,
+                "status": "ok",
+                "payload": res,
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {"symbol": sym, "status": "error", "error": str(exc)}
+
+    for sym in tickers:
+        results.append(await _analyze_one(sym))
+
+    return {"results": results}
 
 
 @app.get("/api/calls")
