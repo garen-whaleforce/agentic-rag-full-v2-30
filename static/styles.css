@@ -129,6 +129,14 @@ h2 {
   margin-top: 6px;
   color: var(--muted);
   font-size: 13px;
+  min-height: 20px;
+}
+
+.info-text {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  min-height: 20px;
 }
 
 input,
