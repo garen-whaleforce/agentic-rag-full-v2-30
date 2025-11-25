@@ -22,31 +22,33 @@
         <p class="muted small"><a class="link-light" href="calls.html">查看已分析的列表 →</a></p>
       </header>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>1. 搜尋公司 / 代號</h2>
-          <div id="status"></div>
-        </div>
-        <div class="search-row">
-          <input id="search-input" type="text" placeholder="例如：AAPL 或 Apple" />
-          <button id="search-btn">搜尋</button>
-        </div>
-        <div id="results" class="results-list"></div>
-      </section>
+      <div class="steps-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>1. 搜尋公司 / 代號</h2>
+            <div id="status"></div>
+          </div>
+          <div class="search-row">
+            <input id="search-input" type="text" placeholder="例如：AAPL 或 Apple" />
+            <button id="search-btn">搜尋</button>
+          </div>
+          <div id="results" class="results-list"></div>
+        </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>2. 選擇季度（FY: Fiscal Year；CY: Calendar Year）</h2>
-          <p id="selected-symbol" class="muted">尚未選擇公司</p>
-        </div>
-        <div class="dates-row">
-          <select id="dates-select">
-            <option value="">請先選擇公司</option>
-          </select>
-          <button id="analyze-btn" disabled>分析</button>
-        </div>
-        <p id="dates-hint" class="muted small"></p>
-      </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>2. 選擇季度（FY: Fiscal Year；CY: Calendar Year）</h2>
+            <p id="selected-symbol" class="muted">尚未選擇公司</p>
+          </div>
+          <div class="dates-row">
+            <select id="dates-select">
+              <option value="">請先選擇公司</option>
+            </select>
+            <button id="analyze-btn" disabled>分析</button>
+          </div>
+          <p id="dates-hint" class="muted small"></p>
+        </section>
+      </div>
 
       <section class="panel card-full">
         <div class="info-kpi-grid">

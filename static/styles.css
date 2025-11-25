@@ -71,6 +71,13 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.steps-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
