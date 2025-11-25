@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from analysis_engine import analyze_earnings
-from fmp_client import close_fmp_client, get_transcript_dates, search_symbols
+from fmp_client import close_fmp_client, get_transcript_dates, search_symbols, _require_api_key
 from storage import get_call, list_calls, init_db
 
 load_dotenv()
@@ -33,6 +33,12 @@ app.add_middleware(
 def _shutdown_clients():
     # Ensure shared HTTP client is closed on app shutdown
     close_fmp_client()
+
+
+@app.on_event("startup")
+def _startup_checks():
+    # Fail fast if required config is missing
+    _require_api_key()
 
 
 class AnalyzeRequest(BaseModel):

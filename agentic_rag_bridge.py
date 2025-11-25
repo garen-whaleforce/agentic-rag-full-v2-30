@@ -57,7 +57,12 @@ def _credentials_path(repo_path: Path) -> Path:
     if not cred.exists():
         env_creds = _env_credentials()
         if env_creds:
-            cred.write_text(json.dumps(env_creds, indent=2))
+            try:
+                # Avoid race: create only if missing
+                cred.write_text(json.dumps(env_creds, indent=2))
+            except FileExistsError:
+                # Another process wrote it; keep going
+                pass
         else:
             raise AgenticRagBridgeError(
                 f"外部庫的 credentials.json 未找到：{cred}. "

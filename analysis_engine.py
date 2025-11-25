@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime
 from typing import Dict
 from uuid import uuid4
@@ -109,9 +110,9 @@ def analyze_earnings(symbol: str, year: int, quarter: int) -> Dict:
             agent_notes=str(notes) if notes else None,
             company=context.get("company"),
         )
-    except Exception:
+    except Exception as exc:
         # Do not block API if persistence fails
-        pass
+        logger.exception("record_analysis failed", exc_info=exc)
 
     return {
         "symbol": symbol,
@@ -124,3 +125,4 @@ def analyze_earnings(symbol: str, year: int, quarter: int) -> Dict:
         "agentic_result": agentic_result,
         "context": context,
     }
+logger = logging.getLogger(__name__)

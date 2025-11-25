@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
@@ -24,7 +25,7 @@ def _get_client() -> httpx.Client:
     """
     global _CLIENT
     if _CLIENT is None:
-        _CLIENT = httpx.Client(base_url=FMP_BASE_URL, timeout=15.0)
+        _CLIENT = httpx.Client(base_url=FMP_BASE_URL, timeout=10.0)
     return _CLIENT
 
 
@@ -42,7 +43,28 @@ def _get(client: httpx.Client, path: str, params: dict) -> httpx.Response:
     Ensure we keep the /stable prefix; paths starting with "/" would drop it.
     """
     clean_path = path.lstrip("/")
-    return client.get(clean_path, params=params)
+    retry_status = {429, 500, 502, 503}
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            resp = client.get(clean_path, params=params)
+            resp.raise_for_status()
+            return resp
+        except httpx.HTTPStatusError as exc:
+            last_exc = exc
+            if exc.response.status_code in retry_status and attempt < 2:
+                time.sleep(0.5 * (2**attempt))
+                continue
+            raise
+        except httpx.RequestError as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(0.5 * (2**attempt))
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("Unexpected HTTP error without exception")
 
 
 def get_company_profile(symbol: str) -> Dict:

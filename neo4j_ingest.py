@@ -55,7 +55,10 @@ def _credentials_path(repo_path: Path) -> Path:
     if not cred.exists():
         env_creds = _env_credentials()
         if env_creds:
-            cred.write_text(json.dumps(env_creds, indent=2))
+            try:
+                cred.write_text(json.dumps(env_creds, indent=2))
+            except FileExistsError:
+                pass
         else:
             raise Neo4jIngestError(
                 f"外部庫的 credentials.json 未找到：{cred}. "
