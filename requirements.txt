@@ -12,3 +12,4 @@ torch==2.3.1+cpu
 transformers
 tqdm
 uvicorn[standard]
+psycopg2-binary
