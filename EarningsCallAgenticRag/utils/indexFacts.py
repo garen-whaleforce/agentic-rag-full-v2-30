@@ -263,7 +263,10 @@ class IndexFacts:
         # Step 2: Write all facts in a single transaction
         if facts_with_embeddings:
             with self.driver.session() as ses:
-                ses.write_transaction(self._batch_write_tx, facts_with_embeddings)
+                write_fn = getattr(ses, "write_transaction", None) or getattr(ses, "execute_write", None)
+                if not write_fn:
+                    raise AttributeError("Neo4j session missing write transaction methods")
+                write_fn(self._batch_write_tx, facts_with_embeddings)
 
     
     def process_transcript(self, transcript: str, ticker: str, quarter: str) -> List[Dict[str, Any]]:
