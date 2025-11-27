@@ -5,13 +5,13 @@ RAG_PATH=${EARNINGS_RAG_PATH:-/app/EarningsCallAgenticRag}
 RAG_REPO_URL=${EARNINGS_RAG_REPO_URL:-https://github.com/la9806958/EarningsCallAgenticRag.git}
 CRED_PATH="$RAG_PATH/credentials.json"
 
-# Ensure external repo is available (clone if missing)
-if [ ! -d "$RAG_PATH/.git" ]; then
+# Ensure external repo is available (clone only if missing or explicitly requested)
+if [ "${FORCE_RAG_CLONE:-0}" = "1" ] || [ ! -f "$RAG_PATH/utils/indexFacts.py" ]; then
   echo "Cloning external repo to $RAG_PATH ..."
   rm -rf "$RAG_PATH"
   git clone --depth 1 "$RAG_REPO_URL" "$RAG_PATH"
 else
-  echo "External repo already present at $RAG_PATH"
+  echo "Using bundled external repo at $RAG_PATH (skipping clone)"
 fi
 
 cat > "$CRED_PATH" <<EOF
