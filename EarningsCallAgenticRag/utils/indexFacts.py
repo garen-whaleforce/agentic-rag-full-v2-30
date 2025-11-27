@@ -263,9 +263,10 @@ class IndexFacts:
         # Step 2: Write all facts in a single transaction
         if facts_with_embeddings:
             with self.driver.session() as ses:
-                write_fn = getattr(ses, "write_transaction", None) or getattr(ses, "execute_write", None)
+                # neo4j >=5 exposes execute_write; older drivers use write_transaction
+                write_fn = getattr(ses, "execute_write", None) or getattr(ses, "write_transaction", None)
                 if not write_fn:
-                    raise AttributeError("Neo4j session missing write transaction methods")
+                    raise AttributeError("Neo4j session missing execute_write/write_transaction")
                 write_fn(self._batch_write_tx, facts_with_embeddings)
 
     
