@@ -8,10 +8,8 @@ all related facts can be analysed in a single LLM prompt.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from langchain_openai import OpenAIEmbeddings
 from neo4j import GraphDatabase
@@ -23,26 +21,29 @@ from agents.prompts.prompts import comparative_agent_prompt
 # Token tracking
 # -------------------------------------------------------------------------
 class TokenTracker:
-    def __init__(self):
+    """Aggregate token usage and rough cost estimation per run."""
+
+    def __init__(self) -> None:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost_usd = 0.0
         self.model_used = "gpt-4o-mini"  # default
-    
-    def add_usage(self, input_tokens: int, output_tokens: int, model: str = None):
+
+    def add_usage(self, input_tokens: int, output_tokens: int, model: str | None = None) -> None:
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
-        if model:
+        if model is not None:
             self.model_used = model
-        
-        # Calculate cost based on model
-        if "gpt-4o" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
-        elif "gpt-4" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
-        elif "gpt-3.5" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
-    
+
+        if model:
+            lowered = model.lower()
+            if "gpt-4o" in lowered:
+                self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
+            elif "gpt-4" in lowered:
+                self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
+            elif "gpt-3.5" in lowered:
+                self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
+
     def get_summary(self) -> Dict[str, Any]:
         return {
             "model": self.model_used,
@@ -74,9 +75,9 @@ class ComparativeAgent:
         query: str,
         exclude_ticker: str,
         top_k: int = 10,
-        sector: str = None,
-        ticker: str = None,
-        use_batch_peer_query: bool = False
+        sector: str | None = None,
+        ticker: str | None = None,
+        use_batch_peer_query: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         If sector_map is provided, run the query for every ticker in the same sector (excluding exclude_ticker).
@@ -139,9 +140,7 @@ class ComparativeAgent:
                     all_results.sort(key=lambda x: x.get('score', 0), reverse=True)
                     return all_results
 
-                
                 else:
-                    # Default: original behavior
                     res = ses.run(
                         """
                         CALL db.index.vector.queryNodes('fact_index', $topK, $vec)
@@ -157,7 +156,7 @@ class ComparativeAgent:
                         """,
                         {"topK": top_k, "vec": vec, "exclude_ticker": exclude_ticker, "min_score": 0.3},
                     )
-                    return [dict(r) for r in res]
+                return [dict(r) for r in res]
         except Exception:
             return []
 
@@ -218,10 +217,7 @@ class ComparativeAgent:
         all_similar = []
         for fact in facts:
             query = self._to_query(fact)
-            if sector:
-                similar = self._search_similar(query, ticker, top_k=top_k, sector=sector)
-            else:
-                similar = self._search_similar(query, ticker, top_k=top_k)
+            similar = self._search_similar(query, ticker, top_k=top_k, sector=sector)
             # Optionally, attach the current metric for context
             for sim in similar:
                 sim["current_metric"] = fact.get("metric", "")

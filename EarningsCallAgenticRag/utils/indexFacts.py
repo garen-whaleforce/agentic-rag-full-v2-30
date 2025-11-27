@@ -29,6 +29,7 @@ FIELD = re.compile(r"\*\*(.+?):\*\*\s*(.+)")
 
 
 def _parse_markdown_items(raw: str) -> List[Dict[str, str]]:
+    """Parse markdown-style fact blocks into dictionaries."""
     pieces = ITEM_HEADER.split(raw)
     out: List[Dict[str, str]] = []
     for i in range(1, len(pieces), 2):
@@ -95,6 +96,7 @@ class IndexFacts:
     # LLM extraction helpers
     # ------------------------------------------------------------------
     def _llm_extract(self, text: str) -> List[Dict[str, str]]:
+        """Call the LLM extractor and return parsed markdown blocks."""
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=[

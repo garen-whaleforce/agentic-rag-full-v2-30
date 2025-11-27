@@ -5,11 +5,13 @@ Compare current facts with the firm's own historical facts.
 """
 
 import json
+import re
+from pathlib import Path
+from typing import Any, Dict, List
+
+import numpy as np
 from openai import OpenAI
 from neo4j import GraphDatabase
-from typing import List, Dict, Any
-from pathlib import Path
-import re
 
 from langchain_openai import OpenAIEmbeddings
 from agents.prompts.prompts import historical_earnings_agent_prompt
@@ -18,26 +20,29 @@ from agents.prompts.prompts import historical_earnings_agent_prompt
 # Token tracking
 # -------------------------------------------------------------------------
 class TokenTracker:
-    def __init__(self):
+    """Aggregate token usage and rough cost estimation per run."""
+
+    def __init__(self) -> None:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost_usd = 0.0
         self.model_used = "gpt-4o-mini"  # default
-    
-    def add_usage(self, input_tokens: int, output_tokens: int, model: str = None):
+
+    def add_usage(self, input_tokens: int, output_tokens: int, model: str | None = None) -> None:
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
-        if model:
+        if model is not None:
             self.model_used = model
-        
-        # Calculate cost based on model
-        if "gpt-4o" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
-        elif "gpt-4" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
-        elif "gpt-3.5" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
-    
+
+        if model:
+            lowered = model.lower()
+            if "gpt-4o" in lowered:
+                self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
+            elif "gpt-4" in lowered:
+                self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
+            elif "gpt-3.5" in lowered:
+                self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
+
     def get_summary(self) -> Dict[str, Any]:
         return {
             "model": self.model_used,
@@ -87,10 +92,7 @@ class HistoricalEarningsAgent:
                     model="text-embedding-3-small",
                     input=text
                 ).data[0].embedding
-            from neo4j import GraphDatabase
-            creds = json.loads(Path(self.driver._uri.split('bolt://')[-1].split(':')[0] + '/credentials.json').read_text()) if hasattr(self.driver, '_uri') else json.loads(Path('credentials.json').read_text())
-            driver = self.driver
-            with driver.session() as session:
+            with self.driver.session() as session:
                 try:
                     # Get previous year's quarter for YoY comparison
                     prev_year_quarter = self._get_prev_year_quarter(current_quarter)
@@ -125,20 +127,17 @@ class HistoricalEarningsAgent:
                     )
                     prev_year_facts = [r.data() for r in prev_year_result]
                     
-                    # Combine and filter facts
                     combined_facts = all_facts + prev_year_facts
-                    
-                    # Keep facts from strictly earlier quarters AND previous year's quarter
-                    # Explicitly exclude the current quarter
+
                     filtered_facts = [
                         f for f in combined_facts
-                        if f.get("quarter") and (
-                            (self._q_sort_key(f.get("quarter")) < self._q_sort_key(current_quarter) or
-                            f.get("quarter") == prev_year_quarter) and
-                            f.get("quarter") != current_quarter  # Explicitly exclude current quarter
+                        if f.get("quarter")
+                        and (
+                            (self._q_sort_key(f.get("quarter")) < self._q_sort_key(current_quarter)
+                             or f.get("quarter") == prev_year_quarter)
+                            and f.get("quarter") != current_quarter
                         )
                     ]
-                    
                     return filtered_facts
                 except Exception as e:
                     print(f"[ERROR] Neo4j vector query failed in get_similar_facts_by_embedding: {e}")
@@ -162,23 +161,23 @@ class HistoricalEarningsAgent:
                             return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
                         for f in all_facts:
                             f["score"] = cosine_sim(embedding, f["embedding"])
-                        all_facts.sort(key=lambda x: x["score"], reverse=True)
-                        # Only keep facts from strictly earlier quarters
-                        # Explicitly exclude the current quarter
-                        filtered_facts = [
-                            f for f in all_facts
-                            if f.get("quarter") and (
-                                self._q_sort_key(f.get("quarter")) < self._q_sort_key(current_quarter) and
-                                f.get("quarter") != current_quarter  # Explicitly exclude current quarter
-                            )
-                        ]
-                        return filtered_facts[:top_n]
+                            all_facts.sort(key=lambda x: x["score"], reverse=True)
+                            # Only keep facts from strictly earlier quarters
+                            # Explicitly exclude the current quarter
+                            filtered_facts = [
+                                f for f in all_facts
+                                if f.get("quarter") and (
+                                    self._q_sort_key(f.get("quarter")) < self._q_sort_key(current_quarter) and
+                                    f.get("quarter") != current_quarter  # Explicitly exclude current quarter
+                                )
+                            ]
+                            return filtered_facts[:top_n]
                     except Exception as e2:
                         print(f"[ERROR] Fallback similarity search failed in get_similar_facts_by_embedding: {e2}")
-                        return None
+                        return []
         except Exception as e:
             print(f"[ERROR] get_similar_facts_by_embedding failed: {e}")
-            return None
+            return []
 
     # Helper for quarter comparison
     @staticmethod

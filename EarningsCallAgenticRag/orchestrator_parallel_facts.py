@@ -1,3 +1,4 @@
+"""Parallel fact extraction and Neo4j indexing for earnings-call data."""
 # --------------------------------------------------
 # orchestrator_parallel_facts.py
 # --------------------------------------------------

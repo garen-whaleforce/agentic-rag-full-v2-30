@@ -8,38 +8,42 @@ past financial statements in a single prompt.
 from __future__ import annotations
 from pathlib import Path
 import json
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 import numpy as np
 import re
 
+from neo4j import GraphDatabase
 from openai import OpenAI
+
 from agents.prompts.prompts import financials_statement_agent_prompt
 
 # -------------------------------------------------------------------------
 # Token tracking
 # -------------------------------------------------------------------------
 class TokenTracker:
-    def __init__(self):
+    """Aggregate token usage and rough cost estimation per run."""
+
+    def __init__(self) -> None:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost_usd = 0.0
         self.model_used = "gpt-4o-mini"  # default
-    
-    def add_usage(self, input_tokens: int, output_tokens: int, model: str = None):
+
+    def add_usage(self, input_tokens: int, output_tokens: int, model: str | None = None) -> None:
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
-        if model:
+        if model is not None:
             self.model_used = model
-        
-        # Calculate cost based on model
-        if "gpt-4o" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
-        elif "gpt-4" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
-        elif "gpt-3.5" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
-    
+
+        if model:
+            lowered = model.lower()
+            if "gpt-4o" in lowered:
+                self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
+            elif "gpt-4" in lowered:
+                self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
+            elif "gpt-3.5" in lowered:
+                self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
+
     def get_summary(self) -> Dict[str, Any]:
         return {
             "model": self.model_used,
@@ -56,7 +60,10 @@ class HistoricalPerformanceAgent:
         creds = json.loads(Path(credentials_file).read_text())
         self.client = OpenAI(api_key=creds["openai_api_key"])
         self.model = model
-        self.credentials_file = credentials_file  # Save as instance attribute
+        self.credentials_file = credentials_file
+        self.driver = GraphDatabase.driver(
+            creds["neo4j_uri"], auth=(creds["neo4j_username"], creds["neo4j_password"])
+        )
         self.token_tracker = TokenTracker()
 
     # ------------------------------------------------------------------
@@ -74,13 +81,13 @@ class HistoricalPerformanceAgent:
         """Find top-N most similar facts for the same ticker and type='Result' using embedding cosine similarity, fetching value via HAS_VALUE."""
         try:
             if isinstance(fact, str):
-                return None
+                return []
             embedding = fact.get("embedding")
             if embedding is None:
                 try:
                     text = f"{fact['ticker']} | {fact['metric']} | {fact['type']}"
                 except Exception:
-                    return None
+                    return []
                 try:
                     embedding = self.client.embeddings.create(
                         model="text-embedding-3-small",
@@ -88,13 +95,8 @@ class HistoricalPerformanceAgent:
                     ).data[0].embedding
                 except Exception as e:
                     print(f"[ERROR] Embedding creation failed in get_similar_facts_by_embedding: {e}")
-                    return None
-            from neo4j import GraphDatabase
-            creds = json.loads(Path(self.credentials_file).read_text())
-            driver = GraphDatabase.driver(
-                creds["neo4j_uri"], auth=(creds["neo4j_username"], creds["neo4j_password"])
-            )
-            with driver.session() as session:
+                    return []
+            with self.driver.session() as session:
                 try:
                     # Get previous year's quarter for YoY comparison
                     prev_year_quarter = self._get_prev_year_quarter(quarter)
@@ -159,20 +161,22 @@ class HistoricalPerformanceAgent:
                             ticker=ticker
                         )
                         all_facts = [r.data() for r in result]
+
                         def cosine_sim(a, b):
                             a = np.array(a)
                             b = np.array(b)
                             return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
                         for f in all_facts:
                             f["score"] = cosine_sim(embedding, f["embedding"])
                         all_facts.sort(key=lambda x: x["score"], reverse=True)
                         return all_facts[:top_n]
                     except Exception as e2:
                         print(f"[ERROR] Fallback similarity search failed in get_similar_facts_by_embedding: {e2}")
-                        return None
+                        return []
         except Exception as e:
             print(f"[ERROR] get_similar_facts_by_embedding failed: {e}")
-            return None
+            return []
 
     # Helper for quarter comparison
     @staticmethod
@@ -197,7 +201,6 @@ class HistoricalPerformanceAgent:
         # Reset token tracker for this run
         self.token_tracker = TokenTracker()
 
-        from agents.prompts.prompts import financials_statement_agent_prompt
         all_similar = []
         for fact in facts:
             similar_facts = self.get_similar_facts_by_embedding(fact, ticker or row.get("ticker"), quarter, top_n=top_n)
@@ -251,12 +254,10 @@ class HistoricalPerformanceAgent:
 
     def generate_embeddings_for_facts(self, batch_size: int = 50):
         """Generate and store embeddings for Fact nodes using ticker, metric, and type as input."""
-        from openai import OpenAI
         creds = json.loads(Path(self.credentials_file).read_text())
-        driver = self.driver
         client = OpenAI(api_key=creds["openai_api_key"])
 
-        with driver.session() as session:
+        with self.driver.session() as session:
             # Fetch all Fact nodes missing an embedding
             result = session.run("""
                 MATCH (f:Fact)

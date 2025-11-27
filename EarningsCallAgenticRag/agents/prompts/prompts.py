@@ -1,7 +1,4 @@
-'''prompts.py
-Utility functions that return structured prompt templates for various analysis agents
-used in an earnings‑call RAG pipeline.
-'''
+"""Prompt utilities for the Agentic RAG earnings-call workflow."""
 from __future__ import annotations
 
 import json
@@ -12,7 +9,13 @@ __all__ = [
     "historical_earnings_agent_prompt",
     "main_agent_prompt",
     "facts_extraction_prompt",
+    "facts_delegation_prompt",
+    "peer_discovery_ticker_prompt",
+    "financials_statement_agent_prompt",
+    "memory",
+    "baseline_prompt",
 ]
+
 
 def comparative_agent_prompt(facts: List[Dict[str, Any]], related_facts: List[Dict[str, Any]], self_ticker: str = None) -> str:
     """Return the prompt for the *Comparative Peers* analysis agent.
@@ -97,54 +100,6 @@ Keep your analysis concise.  Prioritize more recent quarters. Do not discuss are
 """.strip()
 
 
-def historical_earnings_agent_prompt(
-    fact: Dict[str, Any],
-    related_facts: List[Dict[str, Any]],
-    current_quarter: str
-) -> str:
-    """
-    Return the prompt for the *Historical Earnings* analysis agent.
-
-    Parameters
-    ----------
-    fact : dict
-        The current fact from the firm's latest earnings call.
-    related_facts : list of dict
-        A list of related facts drawn from the firm's own previous calls.
-    current_quarter : str
-        The current fiscal quarter (e.g., 'Q2 2025').
-    """
-    return f"""
-You are analyzing a company's earnings call transcript alongside facts from its own past earnings calls.
-
-The list of current facts are:
-{json.dumps(fact, indent=2)}
-
-It is reported in the quarter {current_quarter}
-
-Here is a JSON list of related facts from the firm's previous earnings calls:
-{json.dumps(related_facts, indent=2)}
-
-TASK
-────
-1. **Validate past guidanced**
-   ▸ For every forward-looking statement made in previous quarters, state whether the firm met, beat, or missed that guidance in `{current_quarter}`.  
-   ▸ Reference concrete numbers (e.g., "Revenue growth was 12 % vs. the 10 % guided in 2024-Q3").
-   ▸ Omit if you cannot provide a direct comparison
-
-2. **Compare results discussed**
-    ▸ Compare the results being discussed.
-    ▸ Reference concrete numbers 
-
-3. **Provide supporting evidence.**
-   ▸ Quote or paraphrase the relevant historical statement, then cite the matching current-quarter metric.  
-   ▸ Format each evidence line as  
-     `• <metric>: <historical statement> → <current result>`.
-
-Keep your analysis concise. Prioritize more recent quarters. Do not discuss areas not mentioned.
-""".strip()
-
-
 def financials_statement_agent_prompt(
     fact: Dict[str, Any],
     similar_facts: list,
@@ -174,41 +129,6 @@ Your tasks:
 
 3. **Unexpected outcomes**
    • Highlight results that management did **not** address or that diverge sharply from historical trends, and explain why this matters to investors.
-
-Focus on improvements on bottom line performance (eg. net income)
-
-*Note: Figures may be stated in ten-thousands (万) or hundreds of millions (亿). Make sure to account for these scale differences when comparing values.*
-
-Keep your analysis concise. Prioritize more recent quarters. Do not discuss areas not mentioned.
-
-""".strip()
-
-def financials_statement_agent_prompt(
-    fact: Dict[str, Any],
-    similar_facts: list,
-    quarter: str,
-) -> str:
-    """Prompt template for analysing the current fact in the context of most similar past facts."""
-    return f"""
-You are reviewing the company's {quarter} earnings-call transcript and comparing a key fact to the most similar historical facts from previous quarters.
-
-────────────────────────────────────────
-Current fact (from {quarter}):
-{json.dumps(fact, indent=2)}
-
-Most similar past facts (from previous quarters):
-{json.dumps(similar_facts, indent=2)}
-────────────────────────────────────────
-
-Your tasks:
-
-1. **Direct comparison**
-   • Compare the current fact to each of the most similar past facts. For each, note the quarter, the metric, and the value.
-   • Highlight similarities, differences, and any notable trends or changes.
-   • If the current value is higher/lower/similar to the most recent similar fact, state this explicitly.
-
-2. **Supported outcomes**
-   • Identify areas where management explicitly addressed historical comparisons and the numbers confirm their comments.
 
 Focus on improvements on bottom line performance (eg. net income)
 
@@ -257,7 +177,7 @@ The original transcript is:
 {original_transcript}
 
 {financial_statements_section}
-+{qoq_section_str}
+{qoq_section_str}
 ---
 Financials-vs-History note:
 {notes['financials']}

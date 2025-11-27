@@ -11,25 +11,20 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field, fields as dataclass_fields
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Union
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from math import ceil
-
-from openai import OpenAI
-from tqdm import tqdm
-
-from collections import defaultdict
 
 # ---- Centralised prompt imports -------------------------------------------
 from agents.prompts.prompts import (
-    facts_extraction_prompt,  # chunk‑level extraction
-    facts_delegation_prompt,  # routing to helper agents
-    main_agent_prompt,        # fact‑level verdict
-    peer_discovery_ticker_prompt,  # peer lookup
-    # Add import for formatting QoQ facts
+    facts_delegation_prompt,
+    facts_extraction_prompt,
+    main_agent_prompt,
+    peer_discovery_ticker_prompt,
 )
+from openai import OpenAI
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
@@ -41,26 +36,29 @@ FIELD = re.compile(r"\*\*(.+?):\*\*\s*(.+)")
 # Token tracking
 # ---------------------------------------------------------------------------
 class TokenTracker:
-    def __init__(self):
+    """Aggregate token usage and rough cost estimation per run."""
+
+    def __init__(self) -> None:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost_usd = 0.0
         self.model_used = "gpt-4o-mini"  # default
-    
-    def add_usage(self, input_tokens: int, output_tokens: int, model: str = None):
+
+    def add_usage(self, input_tokens: int, output_tokens: int, model: str | None = None) -> None:
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
-        if model:
+        if model is not None:
             self.model_used = model
-        
-        # Calculate cost based on model
-        if "gpt-4o" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
-        elif "gpt-4" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
-        elif "gpt-3.5" in model.lower():
-            self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
-    
+
+        if model:
+            lowered = model.lower()
+            if "gpt-4o" in lowered:
+                self.total_cost_usd += (input_tokens * 0.000005) + (output_tokens * 0.000015)
+            elif "gpt-4" in lowered:
+                self.total_cost_usd += (input_tokens * 0.00003) + (output_tokens * 0.00006)
+            elif "gpt-3.5" in lowered:
+                self.total_cost_usd += (input_tokens * 0.0000015) + (output_tokens * 0.000002)
+
     def get_summary(self) -> Dict[str, Any]:
         return {
             "model": self.model_used,
@@ -69,6 +67,7 @@ class TokenTracker:
             "total_tokens": self.total_input_tokens + self.total_output_tokens,
             "cost_usd": self.total_cost_usd
         }
+
 
 def _parse_items(raw: str) -> List[Dict[str, str]]:
     """Convert markdown blocks into structured dicts."""
@@ -94,7 +93,9 @@ def _parse_items(raw: str) -> List[Dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 class BaseHelperAgent:
-    def run(self, facts: List[Dict[str, Any]], ticker: str, quarter: str, *args) -> str:  # noqa: D401
+    """Protocol for helper agents used by the main decision maker."""
+
+    def run(self, facts: List[Dict[str, Any]], ticker: str, quarter: str, *args) -> str:
         """Return a short analysis covering *all* supplied facts."""
         raise NotImplementedError
 
@@ -116,7 +117,7 @@ class MainAgent:
     token_tracker: TokenTracker = field(default_factory=TokenTracker)
 
     # ------------ init ----------------------------------------------------
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         cred_path = Path(self.credentials_file or self.credentials_path or "")
         if not cred_path.exists():
             raise FileNotFoundError("Credentials file not found.")
@@ -125,24 +126,25 @@ class MainAgent:
 
     # ------------ internal LLM helper ------------------------------------
     def _chat(self, prompt: str, system: str = "") -> str:
+        """Wrapper around OpenAI chat completion with token tracking."""
         msgs = [{"role": "system", "content": system}] if system else []
         msgs.append({"role": "user", "content": prompt})
         resp = self.client.chat.completions.create(model=self.model, messages=msgs, temperature=0, top_p=1)
-        
-        # Track token usage
-        if hasattr(resp, 'usage') and resp.usage:
+
+        if hasattr(resp, "usage") and resp.usage:
             self.token_tracker.add_usage(
                 input_tokens=resp.usage.prompt_tokens,
                 output_tokens=resp.usage.completion_tokens,
-                model=self.model
+                model=self.model,
             )
-        
+
         return resp.choices[0].message.content.strip()
 
     # ---------------------------------------------------------------------
     # 1) Extraction (single call, no chunking)
     # ---------------------------------------------------------------------
     def extract(self, transcript: str) -> List[Dict[str, str]]:
+        """Extract facts from a transcript chunk."""
         raw = self._chat(facts_extraction_prompt(transcript), system="You are a precise extraction bot.")
         return _parse_items(raw)
 
@@ -169,15 +171,18 @@ class MainAgent:
     ) -> None:
         """Route facts, call each helper **in parallel**, store batch-level notes."""
 
-        def _ensure_list_of_dicts(facts):
+        def _ensure_list_of_dicts(facts: Any) -> List[Dict[str, Any]]:
             if isinstance(facts, str):
                 try:
                     facts = json.loads(facts)
                 except Exception:
-                    print(f"\u274c Could not parse string as JSON: {facts[:200]}")
+                    print(f"❌ Could not parse string as JSON: {facts[:200]}")
                     raise TypeError(f"Expected list of dicts, got string: {facts[:200]}")
             if not isinstance(facts, list) or (facts and not isinstance(facts[0], dict)):
-                print(f"\u274c Expected list of dicts, got: {type(facts)} with first element {type(facts[0]) if facts else 'empty'}")
+                print(
+                    "❌ Expected list of dicts, got: "
+                    f"{type(facts)} with first element {type(facts[0]) if facts else 'empty'}"
+                )
                 raise TypeError(f"Expected list of dicts, got: {type(facts)} with first element {type(facts[0]) if facts else 'empty'}")
             return facts
 
@@ -207,15 +212,14 @@ class MainAgent:
             if self.financials_agent and "InspectPastStatements" in buckets:
                 def run_financials():
                     facts_for_financials = _ensure_list_of_dicts(buckets["InspectPastStatements"])
-                    # Remove chunking: pass all facts at once
                     res = self.financials_agent.run(facts_for_financials, row, quarter, ticker)
                     return ("financials", res)
                 tasks.append(executor.submit(run_financials))
 
             if self.past_calls_agent and "QueryPastCalls" in buckets:
                 facts_for_past = _ensure_list_of_dicts(buckets["QueryPastCalls"])
+
                 def run_past_calls():
-                    # Remove chunking: pass all facts at once
                     res = self.past_calls_agent.run(facts_for_past, ticker, quarter)
                     return ("past", res)
                 tasks.append(executor.submit(run_past_calls))
@@ -223,8 +227,8 @@ class MainAgent:
             if self.comparative_agent and "CompareWithPeers" in buckets:
                 facts_for_peers = _ensure_list_of_dicts(buckets["CompareWithPeers"])
                 sector = row.get("sector") if isinstance(row, dict) else getattr(row, "sector", None)
+
                 def run_comparative():
-                    # Remove chunking: pass all facts at once
                     res = self.comparative_agent.run(facts_for_peers, ticker, quarter, peers, sector=sector)
                     return ("peers", res)
                 tasks.append(executor.submit(run_comparative))
@@ -271,7 +275,7 @@ class MainAgent:
     def summarise(self, items: list[dict[str, Any]],
                   memory_txt: str | None = None,
                   original_transcript: str | None = None,
-                  financial_statements_facts: str | None = None) -> str:
+                  financial_statements_facts: str | None = None) -> tuple[Dict[str, str], str]:
         notes = {
             "financials": self._flatten_notes(self._batch_notes.get("financials", None)),
             "past"      : self._flatten_notes(self._batch_notes.get("past", None)),
@@ -314,14 +318,20 @@ class MainAgent:
         print("\n==== MAIN AGENT FULL PROMPT ====")
         print(final_prompt)
         print("===============================\n")
-        return notes, self._chat(final_prompt,
-                                 system="You are a seasoned portfolio manager.")
+        return notes, self._chat(final_prompt, system="You are a seasoned portfolio manager.")
 
     # ---------------------------------------------------------------------
     # 4) Orchestrator
     # ---------------------------------------------------------------------
-    def run(self, facts: List[Dict[str, Any]], row: Dict[str, Any], mem_txt: str | None = None, original_transcript: str | None = None, financial_statements_facts: str | None = None) -> Dict[str, Any]:
-        # Reset token tracker for this run
+    def run(
+        self,
+        facts: List[Dict[str, Any]],
+        row: Dict[str, Any],
+        mem_txt: str | None = None,
+        original_transcript: str | None = None,
+        financial_statements_facts: str | None = None,
+    ) -> Dict[str, Any]:
+        """End-to-end execution: peer discovery, helper delegation, and summary."""
         self.token_tracker = TokenTracker()
         
         # ------------------------------------------------------------------
