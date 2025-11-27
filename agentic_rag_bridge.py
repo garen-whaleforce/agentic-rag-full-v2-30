@@ -205,12 +205,19 @@ def run_single_call_from_context(
     model_cfg = _resolve_models(main_model, helper_model)
 
     with _push_dir(repo_path):
-        comparative_agent = ComparativeAgent(
-            credentials_file=str(cred_path),
-            sector_map=sector_map or None,
-            model=model_cfg["helper_model"],
-            temperature=model_cfg["helper_temperature"],
-        )
+        try:
+            comparative_agent = ComparativeAgent(
+                credentials_file=str(cred_path),
+                sector_map=sector_map or None,
+                model=model_cfg["helper_model"],
+                temperature=model_cfg["helper_temperature"],
+            )
+        except TypeError:
+            comparative_agent = ComparativeAgent(
+                credentials_file=str(cred_path),
+                sector_map=sector_map or None,
+                model=model_cfg["helper_model"],
+            )
         financials_agent = HistoricalPerformanceAgent(
             credentials_file=str(cred_path),
             model=model_cfg["helper_model"],
