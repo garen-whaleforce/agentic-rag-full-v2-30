@@ -76,38 +76,6 @@
       </div>
 
       <section class="panel card-full">
-        <div class="panel-header">
-          <div style="display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; width: 100%;">
-            <h2 style="margin: 0;"><span id="today-earnings-label">今日</span>（<span id="today-earnings-date">--</span>）財報發佈（市值 &gt; 10B）</h2>
-            <div class="control-row" style="flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
-              <div id="today-earnings-date-buttons" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
-                <button class="btn-ghost" data-day="0">今天</button>
-                <button class="btn-ghost" data-day="-1">明天</button>
-                <button class="btn-ghost" data-day="-2">後天</button>
-              </div>
-              <button id="today-earnings-refresh" class="btn-ghost">手動更新</button>
-              <span class="muted small" style="white-space: nowrap;">自動於美東 06:00 更新（僅今日）</span>
-            </div>
-          </div>
-          <p class="muted small" style="margin-top: 4px;">資料來源：FMP Earnings Calendar</p>
-        </div>
-        <div id="today-earnings"></div>
-      </section>
-
-      <section class="panel card-full">
-        <div class="panel-header">
-          <h2>批次分析（最新季度）</h2>
-          <div class="muted small">輸入多個 ticker（逗號或換行分隔），自動抓最新季度分析</div>
-        </div>
-        <div class="batch-row">
-          <textarea id="batch-input" rows="3" placeholder="例如：AAPL, MSFT&#10;NVDA"></textarea>
-          <button id="batch-btn">批次分析</button>
-        </div>
-        <div id="batch-status" class="muted small"></div>
-        <div id="batch-results" class="batch-table"></div>
-      </section>
-
-      <section class="panel card-full">
         <div class="info-kpi-grid">
           <div>
             <h3>基礎資訊</h3>
@@ -206,6 +174,44 @@
           </button>
           <div id="detail-tokens" class="detail-body" hidden>-</div>
         </div>
+      </section>
+
+      <section class="panel card-full">
+        <div class="panel-header">
+          <div style="display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; width: 100%;">
+            <h2 style="margin: 0;">
+              <span id="today-earnings-label">近 7 日</span> 財報發佈範圍：
+              <span id="today-earnings-date">--</span>
+              （市值 &gt; 10B）
+            </h2>
+            <div class="control-row" style="flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+              <label class="small muted">
+                起日：
+                <input id="today-earnings-start" type="date" />
+              </label>
+              <label class="small muted">
+                迄日：
+                <input id="today-earnings-end" type="date" />
+              </label>
+              <button id="today-earnings-query" class="btn-ghost">查詢</button>
+            </div>
+          </div>
+          <p class="muted small" style="margin-top: 4px;">資料來源：FMP Earnings Calendar</p>
+        </div>
+        <div id="today-earnings"></div>
+      </section>
+
+      <section class="panel card-full">
+        <div class="panel-header">
+          <h2>批次分析（最新季度）</h2>
+          <div class="muted small">輸入多個 ticker（逗號或換行分隔），自動抓最新季度分析</div>
+        </div>
+        <div class="batch-row">
+          <textarea id="batch-input" rows="3" placeholder="例如：AAPL, MSFT&#10;NVDA"></textarea>
+          <button id="batch-btn">批次分析</button>
+        </div>
+        <div id="batch-status" class="muted small"></div>
+        <div id="batch-results" class="batch-table"></div>
       </section>
 
       <section class="panel collapsible">

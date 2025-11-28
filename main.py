@@ -1,7 +1,10 @@
+import asyncio
+import logging
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Literal, Optional
-from datetime import datetime
+from typing import Dict, List, Literal, Optional
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
@@ -10,20 +13,19 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from uuid import uuid4
-import asyncio
 
 from analysis_engine import analyze_earnings, analyze_earnings_async
 from fmp_client import (
     close_fmp_client,
     close_fmp_async_client,
+    get_earnings_calendar_for_date,
+    get_earnings_calendar_for_range,
     get_transcript_dates,
     search_symbols,
-    get_earnings_calendar_for_date,
     _require_api_key,
 )
 from agentic_rag_bridge import verify_agentic_repo
-from storage import get_call, list_calls, init_db, ensure_db_writable
-from typing import Dict
+from storage import ensure_db_writable, get_call, init_db, list_calls
 
 load_dotenv()
 
@@ -58,6 +60,50 @@ def _startup_checks():
     verify_agentic_repo()
 
 
+@app.on_event("startup")
+async def _schedule_earnings_calendar_prefetch():
+    tz = None
+    try:
+        tz = ZoneInfo("America/New_York")
+    except Exception:
+        pass
+
+    async def prefetch_loop():
+        while True:
+            try:
+                if tz is not None:
+                    now = datetime.now(tz)
+                else:
+                    now = datetime.utcnow()
+                target = now.replace(hour=6, minute=0, second=0, microsecond=0)
+                if target <= now:
+                    target = target + timedelta(days=1)
+                wait_seconds = (target - now).total_seconds()
+                if wait_seconds < 0:
+                    wait_seconds = 60.0
+                await asyncio.sleep(wait_seconds)
+
+                if tz is not None:
+                    today = target.date()
+                else:
+                    today = datetime.utcnow().date()
+                start = today - timedelta(days=7)
+                try:
+                    get_earnings_calendar_for_range(
+                        start_date=start.isoformat(),
+                        end_date=today.isoformat(),
+                        min_market_cap=10_000_000_000,
+                        skip_cache=True,
+                    )
+                except Exception as exc:
+                    logging.exception("Failed to prefetch earnings calendar range: %s", exc)
+            except Exception as exc:
+                logging.exception("Unexpected error in prefetch_loop: %s", exc)
+                await asyncio.sleep(60.0)
+
+    asyncio.create_task(prefetch_loop())
+
+
 class AnalyzeRequest(BaseModel):
     symbol: str = Field(..., description="Ticker symbol, e.g., AAPL")
     year: int = Field(..., description="Fiscal year")
@@ -79,6 +125,69 @@ def api_symbols(q: str = Query("", description="Search term for company name or 
     try:
         return search_symbols(q)
     except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/earnings-calendar/range")
+def api_earnings_calendar_range(
+    start_date: Optional[str] = Query(
+        None,
+        description="Start date YYYY-MM-DD; default: today-7 (US/Eastern)",
+    ),
+    end_date: Optional[str] = Query(
+        None,
+        description="End date YYYY-MM-DD; default: today (US/Eastern)",
+    ),
+    min_market_cap: float = Query(
+        10_000_000_000,
+        description="Minimum market cap filter",
+    ),
+    refresh: bool = Query(
+        False,
+        description="Skip cache and refetch underlying data",
+    ),
+):
+    try:
+        tz = ZoneInfo("America/New_York")
+    except Exception:
+        # fallback: UTC
+        tz = None
+
+    if tz is not None:
+        now = datetime.now(tz).date()
+    else:
+        now = datetime.utcnow().date()
+    default_end = now
+    default_start = now - timedelta(days=7)
+
+    if end_date:
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="end_date must be YYYY-MM-DD")
+    else:
+        end = default_end
+
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="start_date must be YYYY-MM-DD")
+    else:
+        start = default_start
+
+    if start > end:
+        start, end = end, start
+
+    try:
+        return get_earnings_calendar_for_range(
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            min_market_cap=min_market_cap,
+            skip_cache=refresh,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.exception("Error in api_earnings_calendar_range: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

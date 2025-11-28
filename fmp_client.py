@@ -326,6 +326,48 @@ def get_earnings_calendar_for_date(
     return results
 
 
+def get_earnings_calendar_for_range(
+    start_date: str,
+    end_date: str,
+    min_market_cap: float = 10_000_000_000,
+    skip_cache: bool = False,
+) -> List[Dict]:
+    """
+    Fetch earnings calendars between start_date and end_date (inclusive) and deduplicate by symbol/date.
+    """
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("start_date must be in YYYY-MM-DD format") from exc
+    try:
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("end_date must be in YYYY-MM-DD format") from exc
+
+    if start_dt > end_dt:
+        start_dt, end_dt = end_dt, start_dt
+
+    results: List[Dict] = []
+    seen = set()
+    curr = start_dt
+    while curr <= end_dt:
+        curr_date_str = curr.isoformat()
+        daily_items = get_earnings_calendar_for_date(
+            target_date=curr_date_str,
+            min_market_cap=min_market_cap,
+            skip_cache=skip_cache,
+        )
+        for item in daily_items:
+            key = (item.get("symbol"), item.get("date"))
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(item)
+        curr = curr + timedelta(days=1)
+
+    return results
+
+
 def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict]:
     """
     Fetch daily historical prices between start and end (inclusive).
