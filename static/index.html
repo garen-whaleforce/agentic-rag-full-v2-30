@@ -117,10 +117,17 @@
       </section>
 
       <section class="panel card-full">
-        <h3>Agentic RAG 結果</h3>
+        <div class="panel-header">
+          <h3 style="margin: 0;">Agentic RAG 結果</h3>
+          <div class="control-row" style="margin: 0; justify-content: flex-end;">
+            <button id="translate-btn">英翻中</button>
+            <span id="translate-status" class="muted small"></span>
+          </div>
+        </div>
         <div id="agentic-content" class="agentic">
           <p class="muted">尚未執行分析。</p>
         </div>
+        <div id="agentic-translation" class="translation-block" hidden></div>
       </section>
 
       <section class="panel card-full detail-list">
@@ -133,6 +140,7 @@
             <span class="chevron">▼</span>
           </button>
           <div id="detail-cmp" class="detail-body" hidden>尚無資料</div>
+          <div id="detail-cmp-translation" class="translation-block" hidden></div>
         </div>
         <div class="detail-card">
           <button class="detail-toggle" type="button" aria-expanded="false" data-target="detail-hist">
@@ -143,6 +151,7 @@
             <span class="chevron">▼</span>
           </button>
           <div id="detail-hist" class="detail-body" hidden>尚無資料</div>
+          <div id="detail-hist-translation" class="translation-block" hidden></div>
         </div>
         <div class="detail-card">
           <button class="detail-toggle" type="button" aria-expanded="false" data-target="detail-perf">
@@ -153,6 +162,7 @@
             <span class="chevron">▼</span>
           </button>
           <div id="detail-perf" class="detail-body" hidden>尚無資料</div>
+          <div id="detail-perf-translation" class="translation-block" hidden></div>
         </div>
         <div class="detail-card">
           <button class="detail-toggle" type="button" aria-expanded="false" data-target="detail-baseline">
@@ -227,6 +237,7 @@
       </section>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

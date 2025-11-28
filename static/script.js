@@ -34,6 +34,12 @@ const detailHistSummary = document.getElementById("detail-hist-summary");
 const detailPerfSummary = document.getElementById("detail-perf-summary");
 const detailBaselineSummary = document.getElementById("detail-baseline-summary");
 const detailTokensSummary = document.getElementById("detail-tokens-summary");
+const translateBtn = document.getElementById("translate-btn");
+const translateStatus = document.getElementById("translate-status");
+const agenticTranslation = document.getElementById("agentic-translation");
+const cmpTranslation = document.getElementById("detail-cmp-translation");
+const histTranslation = document.getElementById("detail-hist-translation");
+const perfTranslation = document.getElementById("detail-perf-translation");
 const todayEarningsEl = document.getElementById("today-earnings");
 const todayEarningsLabelEl = document.getElementById("today-earnings-label");
 const todayEarningsDateEl = document.getElementById("today-earnings-date");
@@ -50,6 +56,7 @@ let progressTimer = null;
 let progressIndex = 0;
 let progressDotTimer = null;
 let abortController = null;
+let lastAnalysisResult = null;
 const progressSteps = [
   "開始分析",
   "擷取逐字稿與財報",
@@ -103,6 +110,45 @@ function stopAnalysisProgress(message = "") {
   progressDotTimer = null;
   if (analysisProgress) {
     analysisProgress.textContent = message;
+  }
+}
+
+function resetTranslations(message = "") {
+  const blocks = [agenticTranslation, cmpTranslation, histTranslation, perfTranslation];
+  blocks.forEach((el) => {
+    if (el) {
+      el.hidden = true;
+      el.innerHTML = "";
+      el.dataset.hasTranslation = "false";
+    }
+  });
+  if (translateStatus) {
+    translateStatus.textContent = message || "";
+  }
+}
+
+function renderMarkdownTo(el, text) {
+  if (!el) return;
+  if (!text) {
+    el.innerHTML = '<p class="muted small">尚無翻譯結果</p>';
+    el.hidden = false;
+    el.dataset.hasTranslation = "false";
+    return;
+  }
+  if (window.marked && typeof window.marked.parse === "function") {
+    const html = window.marked.parse(text, { mangle: false, headerIds: false });
+    el.innerHTML = html;
+  } else {
+    el.textContent = text;
+  }
+  el.hidden = false;
+  el.dataset.hasTranslation = "true";
+  if (el.id && el.id.endsWith("-translation")) {
+    const baseId = el.id.replace("-translation", "");
+    const parentBody = document.getElementById(baseId);
+    if (parentBody && parentBody.hidden) {
+      el.hidden = true;
+    }
   }
 }
 
@@ -298,6 +344,8 @@ function onSelectSymbol(item) {
   metaDate.textContent = "-";
   agenticContent.innerHTML = '<p class="muted">尚未執行分析。</p>';
   debugJson.textContent = "{}";
+  resetTranslations();
+  lastAnalysisResult = null;
   // 直接用已載入的季度資料，若沒有再補拉
   if (item.dates && item.dates.length) {
     availableDates = item.dates;
@@ -481,6 +529,7 @@ async function runAnalysis() {
     setStatus("請先選擇年度與季度", "error");
     return;
   }
+  resetTranslations();
   agenticContent.innerHTML = `<div class="control-row"><span class="spinner"></span><span class="muted small">分析中...</span></div>`;
   debugJson.textContent = "{}";
   startAnalysisProgress();
@@ -488,6 +537,7 @@ async function runAnalysis() {
   if (cancelBtn) {
     cancelBtn.disabled = false;
   }
+  lastAnalysisResult = null;
   const [yearStr, quarterStr] = datesSelect.value.split("|");
   const mainModel = (mainModelSelect && mainModelSelect.value) || "gpt-4o-mini";
   const helperModel = (helperModelSelect && helperModelSelect.value) || "gpt-4o-mini";
@@ -527,6 +577,7 @@ async function runAnalysis() {
     metaSector.textContent = data.context?.sector || data.sector || "-";
     renderAgentic(data.agentic_result);
     debugJson.textContent = JSON.stringify(data, null, 2);
+    lastAnalysisResult = data;
 
     // KPI + 詳細資訊
     const agent = data.agentic_result || {};
@@ -589,11 +640,86 @@ async function runAnalysis() {
   }
 }
 
+function collectTextContent(el) {
+  if (!el) return "";
+  return (el.innerText || el.textContent || "").trim();
+}
+
+function buildAgenticText(agent) {
+  if (!agent) return "";
+  const parts = [];
+  if (agent.prediction) parts.push(`Prediction: ${agent.prediction}`);
+  if (agent.confidence != null) parts.push(`Confidence: ${(agent.confidence * 100).toFixed(0)}%`);
+  if (agent.summary) parts.push(`Summary:\n${agent.summary}`);
+  if (Array.isArray(agent.reasons) && agent.reasons.length) {
+    const body = agent.reasons
+      .map((r, idx) => `Reason ${idx + 1}: ${typeof r === "string" ? r : JSON.stringify(r)}`)
+      .join("\n\n");
+    parts.push(`Reasons:\n${body}`);
+  }
+  if (Array.isArray(agent.next_steps) && agent.next_steps.length) {
+    const body = agent.next_steps.map((s, idx) => `${idx + 1}. ${s}`).join("\n");
+    parts.push(`Next Steps:\n${body}`);
+  }
+  return parts.join("\n\n");
+}
+
+async function translateSections() {
+  if (!translateBtn) return;
+
+  const agentResult = (lastAnalysisResult && lastAnalysisResult.agentic_result) || {};
+  const rawNotes = (agentResult.raw && agentResult.raw.notes) || {};
+
+  const payload = {
+    agentic_rag: buildAgenticText(agentResult) || collectTextContent(agenticContent),
+    comparative_agent: rawNotes.peers || collectTextContent(detailCmp),
+    historical_earnings: rawNotes.past || collectTextContent(detailHist),
+    historical_performance: rawNotes.financials || collectTextContent(detailPerf),
+  };
+
+  const hasContent = Object.values(payload).some((v) => v && v.trim());
+  if (!hasContent) {
+    if (translateStatus) translateStatus.textContent = "請先完成分析再翻譯";
+    return;
+  }
+
+  const originalLabel = translateBtn.textContent;
+  translateBtn.disabled = true;
+  translateBtn.textContent = "翻譯中...";
+  if (translateStatus) translateStatus.textContent = "翻譯中...";
+
+  try {
+    const res = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    const data = await res.json();
+    renderMarkdownTo(agenticTranslation, data.agentic_rag_zh || "");
+    renderMarkdownTo(cmpTranslation, data.comparative_agent_zh || "");
+    renderMarkdownTo(histTranslation, data.historical_earnings_zh || "");
+    renderMarkdownTo(perfTranslation, data.historical_performance_zh || "");
+    if (translateStatus) translateStatus.textContent = "翻譯完成";
+  } catch (err) {
+    console.error(err);
+    if (translateStatus) translateStatus.textContent = `翻譯失敗：${err.message || err}`;
+  } finally {
+    translateBtn.disabled = false;
+    translateBtn.textContent = originalLabel;
+  }
+}
+
 searchBtn.addEventListener("click", searchSymbols);
 searchInput.addEventListener("keyup", (e) => {
   if (e.key === "Enter") searchSymbols();
 });
 analyzeBtn.addEventListener("click", runAnalysis);
+if (translateBtn) {
+  translateBtn.addEventListener("click", translateSections);
+}
 if (cancelBtn) {
   cancelBtn.addEventListener("click", () => {
     if (abortController) {
@@ -649,11 +775,20 @@ function wireDetailToggles() {
     btn.addEventListener("click", () => {
       const targetId = btn.getAttribute("data-target");
       const body = document.getElementById(targetId);
+      const translationEl = document.getElementById(`${targetId}-translation`);
       const expanded = btn.getAttribute("aria-expanded") === "true";
       btn.setAttribute("aria-expanded", String(!expanded));
       const chevron = btn.querySelector(".chevron");
       if (body) body.hidden = expanded;
       if (chevron) chevron.style.transform = expanded ? "rotate(-90deg)" : "rotate(0deg)";
+      if (translationEl) {
+        if (expanded) {
+          translationEl.hidden = true;
+        } else {
+          const hasData = translationEl.dataset.hasTranslation === "true" || translationEl.innerHTML.trim() !== "";
+          translationEl.hidden = !hasData;
+        }
+      }
     });
     // start collapsed
     btn.setAttribute("aria-expanded", "false");
@@ -662,6 +797,8 @@ function wireDetailToggles() {
     const targetId = btn.getAttribute("data-target");
     const body = document.getElementById(targetId);
     if (body) body.hidden = true;
+    const translationEl = document.getElementById(`${targetId}-translation`);
+    if (translationEl) translationEl.hidden = true;
   });
 }
 

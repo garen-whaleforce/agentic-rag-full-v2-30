@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime, timedelta
@@ -11,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
@@ -34,6 +36,8 @@ STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Route B: Real-time Earnings Call Analysis")
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+TRANSLATE_MODEL_DEFAULT = os.getenv("TRANSLATE_MODEL", "gpt-5-mini")
 
 app.add_middleware(
     CORSMiddleware,
@@ -124,6 +128,21 @@ class AnalyzeRequest(BaseModel):
 class BatchAnalyzeRequest(BaseModel):
     tickers: list[str] = Field(..., description="List of ticker symbols")
     latest_only: bool = Field(True, description="Always pick latest available quarter")
+
+
+class TranslateRequest(BaseModel):
+    agentic_rag: str = Field("", description="Agentic RAG English content")
+    comparative_agent: str = Field("", description="Comparative Agent English content")
+    historical_earnings: str = Field("", description="Historical Earnings English content")
+    historical_performance: str = Field("", description="Historical Performance English content")
+    model: Optional[str] = Field(None, description="Override translation model (default: gpt-5.1-mini)")
+
+
+class TranslateResponse(BaseModel):
+    agentic_rag_zh: str = ""
+    comparative_agent_zh: str = ""
+    historical_earnings_zh: str = ""
+    historical_performance_zh: str = ""
 
 
 @app.get("/api/symbols")
@@ -283,6 +302,67 @@ async def api_batch_analyze(payload: BatchAnalyzeRequest):
         results.append(await _analyze_one(sym))
 
     return {"results": results}
+
+
+@app.post("/api/translate", response_model=TranslateResponse)
+async def api_translate(payload: TranslateRequest):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
+
+    sections = {
+        "agentic_rag": (payload.agentic_rag or "").strip(),
+        "comparative_agent": (payload.comparative_agent or "").strip(),
+        "historical_earnings": (payload.historical_earnings or "").strip(),
+        "historical_performance": (payload.historical_performance or "").strip(),
+    }
+
+    if not any(sections.values()):
+        raise HTTPException(status_code=400, detail="No content to translate")
+
+    model = (payload.model or TRANSLATE_MODEL_DEFAULT).strip()
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "請將以下英文內容翻譯成繁體中文，保持 markdown、表格與列表格式不變。"
+                "僅回傳 JSON 物件，欄位為 agentic_rag_zh, comparative_agent_zh, "
+                "historical_earnings_zh, historical_performance_zh。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(sections, ensure_ascii=False),
+        },
+    ]
+
+    try:
+        resp = await openai_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.exception("Translation request failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Translation request failed") from exc
+
+    content = None
+    try:
+        content = resp.choices[0].message.content if resp and resp.choices else None
+        if not content:
+            raise ValueError("Empty translation response")
+        data = json.loads(content)
+    except Exception as exc:  # noqa: BLE001
+        logging.exception("Failed to parse translation response: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to parse translation response") from exc
+
+    return TranslateResponse(
+        agentic_rag_zh=str(data.get("agentic_rag_zh", "")).strip(),
+        comparative_agent_zh=str(data.get("comparative_agent_zh", "")).strip(),
+        historical_earnings_zh=str(data.get("historical_earnings_zh", "")).strip(),
+        historical_performance_zh=str(data.get("historical_performance_zh", "")).strip(),
+    )
 
 
 @app.get("/api/calls")

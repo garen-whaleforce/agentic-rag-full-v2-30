@@ -361,6 +361,20 @@ button:not(:disabled):active {
   word-break: break-word;
 }
 
+.translation-block {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: #f7f7f7;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.translation-block p {
+  margin: 6px 0;
+}
+
 .detail-list {
   display: grid;
   gap: 12px;
