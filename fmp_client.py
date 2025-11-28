@@ -164,6 +164,7 @@ async def _get_company_profile_async(symbol: str) -> Dict:
         "exchange": first.get("exchangeShortName") or first.get("exchange"),
         "sector": first.get("sector"),
         "industry": first.get("industry"),
+        "country": first.get("country"),
     }
     set_fmp_cache(cache_key, out)
     return out
@@ -180,7 +181,9 @@ def get_company_profile(symbol: str) -> Dict:
     cache_key = f"fmp:profile:{symbol.upper()}"
     cached = get_fmp_cache(cache_key, max_age_minutes=cache_ttl)
     if cached:
-        return cached
+        # If cached record is missing key fields, refetch to enrich.
+        if cached.get("company") and cached.get("sector") and cached.get("exchange") and cached.get("country") is not None:
+            return cached
 
     client = _get_client()
     # FMP stable profile expects symbol as query param, not path segment
@@ -196,9 +199,131 @@ def get_company_profile(symbol: str) -> Dict:
         "exchange": first.get("exchangeShortName") or first.get("exchange"),
         "sector": first.get("sector"),
         "industry": first.get("industry"),
+        "country": first.get("country"),
     }
     set_fmp_cache(cache_key, out)
     return out
+
+
+def get_market_cap(symbol: str) -> Optional[float]:
+    """
+    Fetch latest market capitalization for the given symbol.
+    """
+    if not symbol:
+        return None
+
+    _require_api_key()
+    cache_ttl = int(os.getenv("MARKET_CAP_CACHE_MIN", "1440"))
+    cache_key = f"fmp:market-cap:{symbol.upper()}"
+    cached = get_fmp_cache(cache_key, max_age_minutes=cache_ttl)
+    if cached is not None:
+        try:
+            cached_val = cached.get("market_cap")
+            if cached_val is not None:
+                return float(cached_val)
+        except Exception:
+            pass
+
+    client = _get_client()
+    resp = _get(client, "market-capitalization", params={"symbol": symbol, "apikey": FMP_API_KEY})
+    data = resp.json() or []
+    if not isinstance(data, list):
+        raise ValueError("Unexpected market cap response format")
+    if not data:
+        return None
+    latest = sorted(data, key=lambda x: x.get("date", ""), reverse=True)[0]
+    raw_cap = latest.get("marketCap")
+    if raw_cap is None:
+        return None
+    try:
+        market_cap = float(raw_cap)
+    except Exception as exc:
+        raise ValueError(f"Invalid market cap value for {symbol}") from exc
+
+    set_fmp_cache(cache_key, {"market_cap": market_cap})
+    return market_cap
+
+
+def get_earnings_calendar_for_date(
+    target_date: Optional[str] = None, min_market_cap: float = 10_000_000_000, skip_cache: bool = False
+) -> List[Dict]:
+    """
+    Fetch earnings calendar for a specific UTC date and filter by market cap.
+    """
+    _require_api_key()
+
+    if target_date is None:
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    else:
+        try:
+            datetime.strptime(target_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("target_date must be in YYYY-MM-DD format") from exc
+        date_str = target_date
+
+    cache_ttl = int(os.getenv("EARNINGS_CALENDAR_CACHE_MIN", "30"))
+    cache_key = f"fmp:earnings-calendar:{date_str}:{int(min_market_cap)}:US"
+    cached = None if skip_cache else get_fmp_cache(cache_key, max_age_minutes=cache_ttl)
+    if cached is not None and "data" in cached:
+        cached_data = cached.get("data") or []
+        if cached_data and all(item.get("company") and item.get("sector") and item.get("exchange") for item in cached_data):
+            return cached_data
+
+    client = _get_client()
+    resp = _get(client, "earnings-calendar", params={"from": date_str, "to": date_str, "apikey": FMP_API_KEY})
+    data = resp.json() or []
+    if not isinstance(data, list):
+        raise ValueError("Unexpected earnings calendar response format")
+
+    def _safe_float(val: object) -> Optional[float]:
+        try:
+            return float(val)
+        except Exception:
+            return None
+
+    results: List[Dict] = []
+    allowed_exchange_prefixes = ("NASDAQ", "NYSE", "AMEX", "BATS", "ARCA")
+    allowed_countries = {"US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"}
+    for item in data:
+        symbol = item.get("symbol")
+        if not symbol:
+            continue
+        profile = get_company_profile(symbol)
+        country = (profile.get("country") or "").upper()
+        exchange = (profile.get("exchange") or "").upper()
+        if country:
+            if country not in allowed_countries:
+                continue
+        elif exchange:
+            if not any(exchange.startswith(pref) for pref in allowed_exchange_prefixes):
+                continue
+        else:
+            # If no country/exchange info, skip to avoid non-US entries.
+            continue
+        market_cap = get_market_cap(symbol)
+        if market_cap is None or market_cap < min_market_cap:
+            continue
+
+        eps_est = _safe_float(item.get("epsEstimated"))
+        eps_act = _safe_float(item.get("epsActual"))
+        company = item.get("company") or item.get("companyName") or profile.get("company") or ""
+        sector = item.get("sector") or profile.get("sector") or ""
+        results.append(
+            {
+                "symbol": symbol,
+                "company": company,
+                "sector": sector,
+                "exchange": profile.get("exchange"),
+                "date": item.get("date"),
+                "eps_estimated": eps_est,
+                "eps_actual": eps_act,
+                "market_cap": market_cap,
+                "raw": item,
+            }
+        )
+
+    set_fmp_cache(cache_key, {"data": results})
+    return results
 
 
 def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict]:

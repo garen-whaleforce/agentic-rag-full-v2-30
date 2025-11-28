@@ -6,6 +6,8 @@ const fDateFrom = document.getElementById("filter-date-from");
 const fDateTo = document.getElementById("filter-date-to");
 const fPred = document.getElementById("filter-pred");
 const fSort = document.getElementById("filter-sort");
+let symbolTypingTimer = null;
+const SYMBOL_TYPING_DELAY = 500;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -73,5 +75,27 @@ document.getElementById("filter-reset").addEventListener("click", () => {
   fSort.value = "date_desc";
   loadCalls();
 });
+
+fSymbol.addEventListener("input", () => {
+  if (symbolTypingTimer) {
+    clearTimeout(symbolTypingTimer);
+  }
+  symbolTypingTimer = setTimeout(() => {
+    loadCalls();
+  }, SYMBOL_TYPING_DELAY);
+});
+
+fSymbol.addEventListener("keyup", (e) => {
+  if (e.key === "Enter") {
+    if (symbolTypingTimer) clearTimeout(symbolTypingTimer);
+    loadCalls();
+  }
+});
+
+const urlParams = new URLSearchParams(window.location.search);
+const initialSymbol = urlParams.get("symbol");
+if (initialSymbol) {
+  fSymbol.value = initialSymbol;
+}
 
 loadCalls();

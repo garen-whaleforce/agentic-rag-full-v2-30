@@ -77,6 +77,25 @@
 
       <section class="panel card-full">
         <div class="panel-header">
+          <div style="display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; width: 100%;">
+            <h2 style="margin: 0;"><span id="today-earnings-label">今日</span>（<span id="today-earnings-date">--</span>）財報發佈（市值 &gt; 10B）</h2>
+            <div class="control-row" style="flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+              <div id="today-earnings-date-buttons" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                <button class="btn-ghost" data-day="0">今天</button>
+                <button class="btn-ghost" data-day="1">昨天</button>
+                <button class="btn-ghost" data-day="2">前天</button>
+              </div>
+              <button id="today-earnings-refresh" class="btn-ghost">手動更新</button>
+              <span class="muted small" style="white-space: nowrap;">自動於美東 06:00 更新（僅今日）</span>
+            </div>
+          </div>
+          <p class="muted small" style="margin-top: 4px;">資料來源：FMP Earnings Calendar</p>
+        </div>
+        <div id="today-earnings"></div>
+      </section>
+
+      <section class="panel card-full">
+        <div class="panel-header">
           <h2>批次分析（最新季度）</h2>
           <div class="muted small">輸入多個 ticker（逗號或換行分隔），自動抓最新季度分析</div>
         </div>

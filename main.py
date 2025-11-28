@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import List, Literal, Optional
+from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
@@ -12,7 +13,14 @@ from uuid import uuid4
 import asyncio
 
 from analysis_engine import analyze_earnings, analyze_earnings_async
-from fmp_client import close_fmp_client, close_fmp_async_client, get_transcript_dates, search_symbols, _require_api_key
+from fmp_client import (
+    close_fmp_client,
+    close_fmp_async_client,
+    get_transcript_dates,
+    search_symbols,
+    get_earnings_calendar_for_date,
+    _require_api_key,
+)
 from agentic_rag_bridge import verify_agentic_repo
 from storage import get_call, list_calls, init_db, ensure_db_writable
 from typing import Dict
@@ -80,6 +88,27 @@ def api_transcript_dates(symbol: str = Query(..., description="Ticker symbol")) 
         raise HTTPException(status_code=400, detail="symbol is required")
     try:
         return get_transcript_dates(symbol)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/earnings-calendar/today")
+def api_earnings_calendar_today(
+    min_market_cap: float = Query(10_000_000_000, description="Minimum market cap filter"),
+    date: Optional[str] = Query(None, description="Target date YYYY-MM-DD; defaults to today (UTC)"),
+    refresh: bool = Query(False, description="Skip cache and refetch"),
+):
+    date_str = None
+    if date:
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+            date_str = date
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    try:
+        return get_earnings_calendar_for_date(
+            target_date=date_str, min_market_cap=min_market_cap, skip_cache=refresh
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

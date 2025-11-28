@@ -34,6 +34,11 @@ const detailHistSummary = document.getElementById("detail-hist-summary");
 const detailPerfSummary = document.getElementById("detail-perf-summary");
 const detailBaselineSummary = document.getElementById("detail-baseline-summary");
 const detailTokensSummary = document.getElementById("detail-tokens-summary");
+const todayEarningsEl = document.getElementById("today-earnings");
+const todayEarningsLabelEl = document.getElementById("today-earnings-label");
+const todayEarningsDateEl = document.getElementById("today-earnings-date");
+const todayEarningsRefreshBtn = document.getElementById("today-earnings-refresh");
+const todayEarningsButtons = document.getElementById("today-earnings-date-buttons");
 const batchInput = document.getElementById("batch-input");
 const batchBtn = document.getElementById("batch-btn");
 const batchStatus = document.getElementById("batch-status");
@@ -44,6 +49,7 @@ let progressTimer = null;
 let progressIndex = 0;
 let progressDotTimer = null;
 let abortController = null;
+let todayEarningsOffset = 0; // 0=today, 1=yesterday, 2=day before
 const progressSteps = [
   "開始分析",
   "擷取逐字稿與財報",
@@ -51,6 +57,20 @@ const progressSteps = [
   "彙整主結論",
 ];
 let currentProgressText = "";
+
+function getDateStrFromOffset(offsetDays = 0) {
+  const now = new Date();
+  const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  base.setUTCDate(base.getUTCDate() - offsetDays);
+  return base.toISOString().slice(0, 10);
+}
+
+function getDayLabel(offset) {
+  if (offset === 0) return "今日";
+  if (offset === 1) return "昨天";
+  if (offset === 2) return "前天";
+  return `${offset} 天前`;
+}
 
 function setStatus(message, tone = "muted") {
   statusEl.textContent = message;
@@ -98,6 +118,104 @@ function stopAnalysisProgress(message = "") {
   if (analysisProgress) {
     analysisProgress.textContent = message;
   }
+}
+
+function setActiveEarningsButton(offset) {
+  if (!todayEarningsButtons) return;
+  todayEarningsButtons.querySelectorAll("button[data-day]").forEach((btn) => {
+    const val = Number(btn.dataset.day || 0);
+    btn.classList.toggle("active", val === offset);
+  });
+}
+
+async function loadTodayEarnings(offset = todayEarningsOffset, force = false) {
+  if (!todayEarningsEl) return;
+  todayEarningsOffset = offset;
+  setActiveEarningsButton(offset);
+  const dayLabel = getDayLabel(offset);
+  todayEarningsEl.innerHTML = `<p class="muted small"><span class="spinner"></span> 載入${dayLabel}財報中...</p>`;
+  const dateStr = getDateStrFromOffset(offset);
+  if (todayEarningsLabelEl) {
+    todayEarningsLabelEl.textContent = dayLabel;
+  }
+  if (todayEarningsDateEl) {
+    todayEarningsDateEl.textContent = dateStr;
+  }
+  try {
+    const url = `/api/earnings-calendar/today?min_market_cap=10000000000&date=${encodeURIComponent(dateStr)}${force ? "&refresh=true" : ""}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    const data = await res.json();
+    const dateLabel = dateStr;
+    if (todayEarningsDateEl) {
+      todayEarningsDateEl.textContent = dateLabel;
+    }
+    if (!data || !data.length) {
+      todayEarningsEl.innerHTML = `<p class="muted small">${dayLabel}沒有市值超過 10B 的財報發佈</p>`;
+      return;
+    }
+
+    const fmtNumber = (val) => {
+      if (val === null || val === undefined) return "N/A";
+      const num = Number(val);
+      if (Number.isNaN(num)) return "N/A";
+      return num.toFixed(2);
+    };
+
+    const rows = data
+      .map(
+        (item) => `<tr>
+        <td>${item.symbol || "-"}</td>
+        <td>${item.company || "-"}</td>
+        <td>${item.sector || "-"}</td>
+        <td>${fmtNumber(item.eps_estimated)}</td>
+        <td>${fmtNumber(item.eps_actual)}</td>
+      </tr>`
+      )
+      .join("");
+    todayEarningsEl.innerHTML = `
+      <div class="table-wrapper">
+        <table class="compact">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Company</th>
+              <th>Sector</th>
+              <th>Est EPS</th>
+              <th>Act EPS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    console.error(err);
+    todayEarningsEl.innerHTML = `<p class="muted small">載入失敗：${err.message}</p>`;
+  }
+}
+
+function scheduleAutoRefreshEarnings() {
+  const msUntilNext = (() => {
+    const now = new Date();
+    const nowET = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const target = new Date(nowET);
+    target.setHours(6, 0, 0, 0); // 06:00 ET
+    if (nowET >= target) {
+      target.setDate(target.getDate() + 1);
+    }
+    return target - nowET;
+  })();
+  setTimeout(() => {
+    if (todayEarningsOffset === 0) {
+      loadTodayEarnings(0, true);
+    }
+    scheduleAutoRefreshEarnings();
+  }, msUntilNext);
 }
 
 async function fetchDatesForSymbol(symbol) {
@@ -529,6 +647,20 @@ wireDetailToggles();
 
 // 初始狀態
 setStatus("輸入公司名稱或代號開始搜尋");
+loadTodayEarnings(todayEarningsOffset);
+scheduleAutoRefreshEarnings();
+if (todayEarningsRefreshBtn) {
+  todayEarningsRefreshBtn.addEventListener("click", () => loadTodayEarnings(todayEarningsOffset, true));
+}
+if (todayEarningsButtons) {
+  todayEarningsButtons.querySelectorAll("button[data-day]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const offset = Number(btn.dataset.day || 0);
+      loadTodayEarnings(offset, false);
+    });
+  });
+  setActiveEarningsButton(todayEarningsOffset);
+}
 // Toggle detail sections
 function wireDetailToggles() {
   document.querySelectorAll(".detail-toggle").forEach((btn) => {
