@@ -82,19 +82,29 @@ its peers in a way that could matter for the **one-trading-day price reaction**.
 2. Highlight **where the company is clearly differentiated** (positively or negatively).
 3. End with 3 bullet points under "Implications for near-term price reaction".
 
-### Output structure
+### Output structure (bilingual; keep numbers consistent across languages)
 
-**Relative performance vs peers**
-- <Metric 1>: <stronger / weaker / in line>, <one sentence explanation>
-- <Metric 2>: ...
+English
+- **Relative performance vs peers**
+  - <Metric 1>: <stronger / weaker / in line>, <one sentence explanation>
+  - <Metric 2>: ...
+- **Tone vs peers**
+  - <one or two sentences comparing tone>
+- **Implications for near-term price reaction**
+  - Bullet 1
+  - Bullet 2
+  - Bullet 3
 
-**Tone vs peers**
-- <one or two sentences comparing tone>
-
-**Implications for near-term price reaction**
-- Bullet 1
-- Bullet 2
-- Bullet 3
+Traditional Chinese (繁體中文，與英文內容對應)
+- **相對同業表現**
+  - <Metric 1>：<強於 / 弱於 / 持平>，<簡要說明>
+  - ...
+- **語氣 vs 同業**
+  - <一到兩句比較語氣>
+- **對隔日股價的啟示**
+  - 重點 1
+  - 重點 2
+  - 重點 3
 
 Use ONLY the facts shown above. Do not assume external consensus, news, or valuations.
 """.strip()
@@ -130,16 +140,25 @@ move the stock on the **next trading day**.
    - Where management is **more optimistic or more cautious** than before.
    - Where actual results **beat, meet, or miss** what they previously guided.
 
-### Output structure
+### Output structure (bilingual; keep the same claims in both languages)
 
-**Fact-level comparison**
-- <Metric / topic>: <Accelerating / Decelerating / In line>
-  - Evidence: <one short sentence referencing current vs past numbers/wording>
+English
+- **Fact-level comparison**
+  - <Metric / topic>: <Accelerating / Decelerating / In line>
+    - Evidence: <one short sentence referencing current vs past numbers/wording>
+- **Key historical context for near-term reaction**
+  - Bullet 1
+  - Bullet 2
+  - Bullet 3
 
-**Key historical context for near-term reaction**
-- Bullet 1
-- Bullet 2
-- Bullet 3
+Traditional Chinese (繁體中文)
+- **事實比較**
+  - <指標 / 主題>：<加速 / 放緩 / 大致持平>
+    - 證據：<一短句，對照本季與過去數字/措辭>
+- **對隔日股價的關鍵歷史脈絡**
+  - 重點 1
+  - 重點 2
+  - 重點 3
 
 Keep it concise and focus only on changes that could affect the **one-day** price reaction.
 Use ONLY the information in the facts above.
@@ -172,15 +191,23 @@ financials in a way that matters for the **near-term (one-trading-day) price rea
    and state whether they are likely **positive or negative** for the **near-term** price.
 3. Point out any **one-off items** or unsustainable drivers if they are explicitly mentioned.
 
-### Output structure
+### Output structure (bilingual; identical logic in both languages)
 
-**Metric-level assessment**
-- <Metric>: <Better / Worse / In line>, <one short sentence with numbers or direction>
+English
+- **Metric-level assessment**
+  - <Metric>: <Better / Worse / In line>, <one short sentence with numbers or direction>
+- **Key financial takeaways for near-term price reaction**
+  - Bullet 1
+  - Bullet 2
+  - Bullet 3
 
-**Key financial takeaways for near-term price reaction**
-- Bullet 1
-- Bullet 2
-- Bullet 3
+Traditional Chinese (繁體中文)
+- **指標級判讀**
+  - <指標>：<優於 / 劣於 / 持平>，<帶數字或方向的一句說明>
+- **對隔日股價的財務重點**
+  - 重點 1
+  - 重點 2
+  - 重點 3
 
 Be concise. Use ONLY the numbers and facts shown in the inputs.
 Do NOT guess or fabricate figures that are not provided.
@@ -311,20 +338,17 @@ Your job:
 - 4-6  = reaction is likely **flat / very uncertain**.
 - 7-10 = you expect a clear **Up** move.
 
-### Output format (MUST FOLLOW EXACTLY)
+### Output format (MUST FOLLOW EXACTLY; bilingual summaries with ONE direction line)
 
-1. First, write **2-3 sentences** explaining:
-   - Why you expect an Up / Down / almost flat reaction,
-   - Refer explicitly to financials, past calls, and peer positioning where relevant.
-
-2. Then, on a new line, output the Direction score as an integer:
-
-Direction: <integer 0-10>
+1. English (2-3 sentences): explain why you expect Up / Down / flat, citing financials, past calls, peers.
+2. Traditional Chinese (繁體中文, 2-3 句)：與英文一致的結論與理由。
+3. Direction line (only once, in English):
+   Direction: <integer 0-10>
 
 Example (structure only):
 
-Management cut guidance and highlighted demand headwinds, while peers are
-more optimistic. This makes a negative one-day reaction more likely.
+English: Management cut guidance and highlighted demand headwinds, while peers are more optimistic. This makes a negative one-day reaction more likely.
+中文：公司下修財測並強調需求逆風，且同業語氣更樂觀，因此隔日股價下跌機率較高。
 Direction: 3
 """.strip()
 

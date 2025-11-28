@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -39,7 +41,7 @@ app = FastAPI(title="Route B: Real-time Earnings Call Analysis")
 TRANSLATE_MODEL_DEFAULT = os.getenv("TRANSLATE_MODEL", "gpt-5-mini")
 
 
-def _build_async_openai_client() -> tuple[AsyncOpenAI | AsyncAzureOpenAI | None, dict]:
+def _build_async_openai_client() -> Tuple[Union[AsyncOpenAI, AsyncAzureOpenAI, None], dict]:
     azure_key = os.getenv("AZURE_OPENAI_API_KEY")
     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or "2024-12-01-preview"
