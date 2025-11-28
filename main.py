@@ -283,12 +283,21 @@ async def api_batch_analyze(payload: BatchAnalyzeRequest):
             quarter = None
             if payload.latest_only:
                 dates = get_transcript_dates(sym)
-                valid = [d for d in dates if d.get("year") and d.get("quarter")]
+                # Prefer fiscal year/quarter, but fall back to calendar if fiscal missing
+                valid = []
+                for d in dates:
+                    y = d.get("year") or d.get("calendar_year")
+                    q = d.get("quarter") or d.get("calendar_quarter")
+                    if y is None or q is None:
+                        continue
+                    try:
+                        valid.append((int(y), int(q)))
+                    except Exception:
+                        continue
                 if not valid:
                     return {"symbol": sym, "status": "error", "error": "no transcript dates"}
-                latest = sorted(valid, key=lambda x: (int(x["year"]), int(x["quarter"])), reverse=True)[0]
-                year = int(latest["year"])
-                quarter = int(latest["quarter"])
+                valid.sort(reverse=True)
+                year, quarter = valid[0]
             res = await analyze_earnings_async(sym, year, quarter) if year and quarter else None
             return {
                 "symbol": sym,
