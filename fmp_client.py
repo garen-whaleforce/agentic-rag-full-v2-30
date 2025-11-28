@@ -258,7 +258,7 @@ def get_market_cap(symbol: str) -> Optional[float]:
 
 
 def get_earnings_calendar_for_date(
-    target_date: Optional[str] = None, min_market_cap: float = 10_000_000_000, skip_cache: bool = False
+    target_date: Optional[str] = None, min_market_cap: float = 1_000_000_000, skip_cache: bool = False
 ) -> List[Dict]:
     """
     Fetch earnings calendar for a specific UTC date and filter by market cap.
@@ -342,7 +342,7 @@ def get_earnings_calendar_for_date(
 def get_earnings_calendar_for_range(
     start_date: str,
     end_date: str,
-    min_market_cap: float = 10_000_000_000,
+    min_market_cap: float = 1_000_000_000,
     skip_cache: bool = False,
 ) -> List[Dict]:
     """

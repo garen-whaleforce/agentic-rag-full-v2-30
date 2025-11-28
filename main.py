@@ -102,7 +102,7 @@ async def _schedule_earnings_calendar_prefetch():
                     get_earnings_calendar_for_range(
                         start_date=start.isoformat(),
                         end_date=today.isoformat(),
-                        min_market_cap=10_000_000_000,
+                        min_market_cap=1_000_000_000,
                         skip_cache=True,
                     )
                 except Exception as exc:
@@ -163,10 +163,7 @@ def api_earnings_calendar_range(
         None,
         description="End date YYYY-MM-DD; default: today (US/Eastern)",
     ),
-    min_market_cap: float = Query(
-        10_000_000_000,
-        description="Minimum market cap filter",
-    ),
+    min_market_cap: float = Query(1_000_000_000, description="Minimum market cap filter"),
     refresh: bool = Query(
         False,
         description="Skip cache and refetch underlying data",
@@ -228,7 +225,7 @@ def api_transcript_dates(symbol: str = Query(..., description="Ticker symbol")) 
 
 @app.get("/api/earnings-calendar/today")
 def api_earnings_calendar_today(
-    min_market_cap: float = Query(10_000_000_000, description="Minimum market cap filter"),
+    min_market_cap: float = Query(1_000_000_000, description="Minimum market cap filter"),
     date: Optional[str] = Query(None, description="Target date YYYY-MM-DD; defaults to today (UTC)"),
     refresh: bool = Query(False, description="Skip cache and refetch"),
 ):
