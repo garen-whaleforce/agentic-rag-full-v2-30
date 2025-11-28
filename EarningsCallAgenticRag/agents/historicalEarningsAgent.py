@@ -13,11 +13,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
-from openai import OpenAI
 from neo4j import GraphDatabase
 
-from langchain_openai import OpenAIEmbeddings
 from agents.prompts.prompts import historical_earnings_agent_prompt
+from utils.llm import build_chat_client, build_embeddings
 
 # -------------------------------------------------------------------------
 # Token tracking
@@ -69,13 +68,13 @@ class HistoricalEarningsAgent:
         temperature: float = 0.0,
     ) -> None:
         creds = json.loads(Path(credentials_file).read_text())
-        self.client = OpenAI(api_key=creds["openai_api_key"])
-        self.model = model
+        self.client, resolved_model = build_chat_client(creds, model)
+        self.model = resolved_model
         self.temperature = temperature
         self.driver = GraphDatabase.driver(
             creds["neo4j_uri"], auth=(creds["neo4j_username"], creds["neo4j_password"])
         )
-        self.embedder = OpenAIEmbeddings(openai_api_key=creds["openai_api_key"])
+        self.embedder = build_embeddings(creds)
         self.token_tracker = TokenTracker()
 
     # ------------------------------------------------------------------
@@ -101,10 +100,7 @@ class HistoricalEarningsAgent:
             embedding = fact.get("embedding")
             if embedding is None:
                 text = f"{fact['ticker']} | {fact['metric']} | {fact['type']}"
-                embedding = self.client.embeddings.create(
-                    model="text-embedding-3-small",
-                    input=text
-                ).data[0].embedding
+                embedding = self.embedder.embed_query(text)
             with self.driver.session() as session:
                 try:
                     # Get previous year's quarter for YoY comparison

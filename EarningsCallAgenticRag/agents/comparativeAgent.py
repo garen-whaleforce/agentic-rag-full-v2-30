@@ -12,11 +12,10 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
-from langchain_openai import OpenAIEmbeddings
 from neo4j import GraphDatabase
-from openai import OpenAI
 
 from agents.prompts.prompts import comparative_agent_prompt
+from utils.llm import build_chat_client, build_embeddings
 
 # -------------------------------------------------------------------------
 # Token tracking
@@ -70,13 +69,13 @@ class ComparativeAgent:
         **kwargs,
     ) -> None:
         creds = json.loads(Path(credentials_file).read_text())
-        self.client = OpenAI(api_key=creds["openai_api_key"])
-        self.model = model
+        self.client, resolved_model = build_chat_client(creds, model)
+        self.model = resolved_model
         self.temperature = temperature
         self.driver = GraphDatabase.driver(
             creds["neo4j_uri"], auth=(creds["neo4j_username"], creds["neo4j_password"])
         )
-        self.embedder = OpenAIEmbeddings(openai_api_key=creds["openai_api_key"])
+        self.embedder = build_embeddings(creds)
         self.token_tracker = TokenTracker()
         self.sector_map = sector_map or {}
 

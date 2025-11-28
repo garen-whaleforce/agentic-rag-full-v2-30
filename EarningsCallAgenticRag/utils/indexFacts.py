@@ -16,9 +16,9 @@ from typing import Any, Dict, List
 import concurrent.futures
 
 from neo4j import GraphDatabase
-from openai import OpenAI
 
 from agents.prompts.prompts import facts_extraction_prompt
+from utils.llm import build_chat_client
 
 # ── Markdown parser -------------------------------------------------------
 ITEM_HEADER = re.compile(
@@ -56,10 +56,10 @@ class IndexFacts:
     """
 
     # ------------------------------------------------------------------
-    def __init__(self, credentials_file: str, openai_model: str = "gpt-4o-mini"):
+    def __init__(self, credentials_file: str, openai_model: str = "gpt-4o-mini", prefer_openai: bool = False):
         creds = json.loads(Path(credentials_file).read_text())
-        self.client = OpenAI(api_key=creds["openai_api_key"])
-        self.model = openai_model
+        self.client, resolved_model = build_chat_client(creds, openai_model, prefer_openai=prefer_openai)
+        self.model = resolved_model
         self.driver = GraphDatabase.driver(
             creds["neo4j_uri"], auth=(creds["neo4j_username"], creds["neo4j_password"])
         )

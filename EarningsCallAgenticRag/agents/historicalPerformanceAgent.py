@@ -14,9 +14,9 @@ import numpy as np
 import re
 
 from neo4j import GraphDatabase
-from openai import OpenAI
 
 from agents.prompts.prompts import financials_statement_agent_prompt
+from utils.llm import build_chat_client, build_embeddings
 
 # -------------------------------------------------------------------------
 # Token tracking
@@ -68,13 +68,14 @@ class HistoricalPerformanceAgent:
         temperature: float = 0.0,
     ) -> None:
         creds = json.loads(Path(credentials_file).read_text())
-        self.client = OpenAI(api_key=creds["openai_api_key"])
-        self.model = model
+        self.client, resolved_model = build_chat_client(creds, model)
+        self.model = resolved_model
         self.temperature = temperature
         self.credentials_file = credentials_file
         self.driver = GraphDatabase.driver(
             creds["neo4j_uri"], auth=(creds["neo4j_username"], creds["neo4j_password"])
         )
+        self.embedder = build_embeddings(creds)
         self.token_tracker = TokenTracker()
 
     # ------------------------------------------------------------------
@@ -100,10 +101,7 @@ class HistoricalPerformanceAgent:
                 except Exception:
                     return []
                 try:
-                    embedding = self.client.embeddings.create(
-                        model="text-embedding-3-small",
-                        input=text
-                    ).data[0].embedding
+                    embedding = self.embedder.embed_query(text)
                 except Exception as e:
                     print(f"[ERROR] Embedding creation failed in get_similar_facts_by_embedding: {e}")
                     return []
@@ -267,7 +265,7 @@ class HistoricalPerformanceAgent:
     def generate_embeddings_for_facts(self, batch_size: int = 50):
         """Generate and store embeddings for Fact nodes using ticker, metric, and type as input."""
         creds = json.loads(Path(self.credentials_file).read_text())
-        client = OpenAI(api_key=creds["openai_api_key"])
+        embedder = build_embeddings(creds)
 
         with self.driver.session() as session:
             # Fetch all Fact nodes missing an embedding
@@ -283,11 +281,7 @@ class HistoricalPerformanceAgent:
                 texts = [
                     f"{f['ticker']} | {f['metric']} | {f['type']}" for f in batch
                 ]
-                # Generate embeddings in batch
-                embeddings = client.embeddings.create(
-                    model="text-embedding-3-small",
-                    input=texts
-                ).data
+                embeddings = embedder.embed_documents(texts)
 
                 # Write embeddings back to Neo4j
                 for fact, emb in zip(batch, embeddings):
@@ -297,5 +291,5 @@ class HistoricalPerformanceAgent:
                         SET f.embedding = $embedding
                         """,
                         id=fact["id"],
-                        embedding=emb.embedding
+                        embedding=emb
                     )

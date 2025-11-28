@@ -21,17 +21,34 @@ logger = logging.getLogger(__name__)
 
 def _truncate_transcript_text(text: str) -> str:
     """
-    Limit transcript length to avoid huge prompts.
-    Max length is controlled by MAX_TRANSCRIPT_CHARS env var (default 15000 chars).
+    Return transcript text without truncation by default.
+
+    If the environment variable MAX_TRANSCRIPT_CHARS is explicitly set to a positive integer,
+    truncate the text to at most that many characters.
+
+    This helper is kept for backwards compatibility but now behaves as a no-op unless an
+    explicit limit is configured.
     """
     if not text:
         return ""
+
+    max_chars_raw = os.getenv("MAX_TRANSCRIPT_CHARS", "")
     try:
-        max_chars = int(os.getenv("MAX_TRANSCRIPT_CHARS", "15000"))
+        max_chars_str = max_chars_raw.strip()
     except Exception:
-        max_chars = 15000
+        return text
+
+    if not max_chars_str:
+        return text
+
+    try:
+        max_chars = int(max_chars_str)
+    except Exception:
+        return text
+
     if max_chars <= 0:
         return text
+
     return text[:max_chars]
 
 

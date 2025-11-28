@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from openai import AsyncOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
@@ -36,8 +36,33 @@ STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Route B: Real-time Earnings Call Analysis")
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 TRANSLATE_MODEL_DEFAULT = os.getenv("TRANSLATE_MODEL", "gpt-5-mini")
+
+
+def _build_async_openai_client() -> tuple[AsyncOpenAI | AsyncAzureOpenAI | None, dict]:
+    azure_key = os.getenv("AZURE_OPENAI_API_KEY")
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or "2024-12-01-preview"
+    if azure_key and azure_endpoint:
+        deployments = {
+            "gpt-5-mini": os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT5") or "gpt-5-mini",
+            "gpt-4o-mini": os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT4O") or "gpt-4o-mini",
+        }
+        client = AsyncAzureOpenAI(
+            api_key=azure_key,
+            azure_endpoint=azure_endpoint,
+            api_version=azure_version,
+        )
+        return client, deployments
+
+    key = os.getenv("OPENAI_API_KEY")
+    if key:
+        return AsyncOpenAI(api_key=key), {}
+
+    return None, {}
+
+
+openai_client, AZURE_DEPLOYMENTS = _build_async_openai_client()
 
 app.add_middleware(
     CORSMiddleware,
@@ -312,9 +337,8 @@ async def api_batch_analyze(payload: BatchAnalyzeRequest):
 
 @app.post("/api/translate", response_model=TranslateResponse)
 async def api_translate(payload: TranslateRequest):
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
+    if openai_client is None:
+        raise HTTPException(status_code=500, detail="OpenAI/Azure OpenAI credentials are not set")
 
     sections = {
         "agentic_rag": (payload.agentic_rag or "").strip(),
@@ -327,6 +351,8 @@ async def api_translate(payload: TranslateRequest):
         raise HTTPException(status_code=400, detail="No content to translate")
 
     model = (payload.model or TRANSLATE_MODEL_DEFAULT).strip()
+    if AZURE_DEPLOYMENTS:
+        model = AZURE_DEPLOYMENTS.get(model, model)
 
     messages = [
         {

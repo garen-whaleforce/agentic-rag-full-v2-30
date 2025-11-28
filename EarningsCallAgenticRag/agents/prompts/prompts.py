@@ -243,7 +243,7 @@ def main_agent_prompt(
     if original_transcript:
         transcript_section = f"""
 ---
-Latest earnings call transcript (may be truncated):
+Latest earnings call transcript (full, not pre-summarised or truncated):
 {original_transcript}
 ---"""
 

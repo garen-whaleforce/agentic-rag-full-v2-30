@@ -43,13 +43,36 @@ def _env_credentials() -> Optional[Dict[str, Any]]:
     neo4j_db = os.getenv("NEO4J_DATABASE") or "neo4j"
     if not all([openai_key, neo4j_uri, neo4j_username, neo4j_password]):
         return None
-    return {
+    creds: Dict[str, Any] = {
         "openai_api_key": openai_key,
         "neo4j_uri": neo4j_uri,
         "neo4j_username": neo4j_username,
         "neo4j_password": neo4j_password,
         "neo4j_database": neo4j_db,
     }
+    azure_key = os.getenv("AZURE_OPENAI_API_KEY")
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if azure_key and azure_endpoint:
+        creds.update(
+            {
+                "azure_api_key": azure_key,
+                "azure_endpoint": azure_endpoint,
+                "azure_api_version": os.getenv("AZURE_OPENAI_API_VERSION") or "2024-12-01-preview",
+            }
+        )
+        deployments: Dict[str, str] = {}
+        gpt5 = os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT5")
+        if gpt5:
+            deployments["gpt-5-mini"] = gpt5
+        gpt4o = os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT4O")
+        if gpt4o:
+            deployments["gpt-4o-mini"] = gpt4o
+        if deployments:
+            creds["azure_deployments"] = deployments
+        embed_dep = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+        if embed_dep:
+            creds["azure_embedding_deployment"] = embed_dep
+    return creds
 
 
 def _credentials_path(repo_path: Path) -> Path:

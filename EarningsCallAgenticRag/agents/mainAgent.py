@@ -25,7 +25,7 @@ from agents.prompts.prompts import (
     main_agent_prompt,
     peer_discovery_ticker_prompt,
 )
-from openai import OpenAI
+from utils.llm import build_chat_client
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
@@ -128,8 +128,9 @@ class MainAgent:
         cred_path = Path(self.credentials_file or self.credentials_path or "")
         if not cred_path.exists():
             raise FileNotFoundError("Credentials file not found.")
-        api_key = json.loads(cred_path.read_text())["openai_api_key"]
-        self.client = OpenAI(api_key=api_key)
+        creds = json.loads(cred_path.read_text())
+        self.client, resolved_model = build_chat_client(creds, self.model)
+        self.model = resolved_model
 
     # ------------ internal LLM helper ------------------------------------
     def _chat(self, prompt: str, system: str = "") -> str:
