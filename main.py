@@ -47,6 +47,7 @@ def _build_async_openai_client() -> Tuple[Union[AsyncOpenAI, AsyncAzureOpenAI, N
     azure_version = os.getenv("AZURE_OPENAI_API_VERSION") or "2024-12-01-preview"
     if azure_key and azure_endpoint:
         deployments = {
+            "gpt-5.1": os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT51") or "gpt-5.1",
             "gpt-5-mini": os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT5") or "gpt-5-mini",
             "gpt-4o-mini": os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT4O") or "gpt-4o-mini",
         }

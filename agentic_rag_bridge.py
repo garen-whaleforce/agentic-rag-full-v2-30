@@ -61,6 +61,9 @@ def _env_credentials() -> Optional[Dict[str, Any]]:
             }
         )
         deployments: Dict[str, str] = {}
+        gpt51 = os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT51")
+        if gpt51:
+            deployments["gpt-5.1"] = gpt51
         gpt5 = os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT5")
         if gpt5:
             deployments["gpt-5-mini"] = gpt5

@@ -20,6 +20,9 @@ def _azure_settings(creds: Dict[str, str]) -> Tuple[str | None, str | None, str,
     deployments = creds.get("azure_deployments") or {}
 
     env_deployments = {}
+    gpt51 = os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT51")
+    if gpt51:
+        env_deployments["gpt-5.1"] = gpt51
     gpt5 = os.getenv("AZURE_OPENAI_DEPLOYMENT_GPT5")
     if gpt5:
         env_deployments["gpt-5-mini"] = gpt5
