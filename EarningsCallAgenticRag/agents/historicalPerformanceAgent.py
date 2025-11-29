@@ -15,7 +15,7 @@ import re
 
 from neo4j import GraphDatabase
 
-from agents.prompts.prompts import FINANCIALS_SYSTEM_MESSAGE, financials_statement_agent_prompt
+from agents.prompts.prompts import get_financials_system_message, financials_statement_agent_prompt
 from utils.llm import build_chat_client, build_embeddings
 
 # -------------------------------------------------------------------------
@@ -245,7 +245,7 @@ class HistoricalPerformanceAgent:
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": FINANCIALS_SYSTEM_MESSAGE},
+                {"role": "system", "content": get_financials_system_message()},
                 {"role": "user", "content": prompt},
             ],
             top_p=1,

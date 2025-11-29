@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Sequence
 
 from neo4j import GraphDatabase
 
-from agents.prompts.prompts import COMPARATIVE_SYSTEM_MESSAGE, comparative_agent_prompt
+from agents.prompts.prompts import get_comparative_system_message, comparative_agent_prompt
 from utils.llm import build_chat_client, build_embeddings
 
 # -------------------------------------------------------------------------
@@ -330,7 +330,7 @@ class ComparativeAgent:
             resp = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": COMPARATIVE_SYSTEM_MESSAGE},
+                    {"role": "system", "content": get_comparative_system_message()},
                     {"role": "user", "content": prompt},
                 ],
                 top_p=1,

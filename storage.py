@@ -54,6 +54,30 @@ def _created_column_def() -> str:
     return "TEXT DEFAULT (datetime('now'))"
 
 
+def _ensure_prompts_table(cursor):
+    """Ensure prompt_configs table exists for prompt overrides."""
+    if DB_KIND == "postgres":
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS prompt_configs (
+                key TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS prompt_configs (
+                key TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+
 def _to_utc(dt_value: Any) -> Optional[datetime]:
     """
     Normalize datetime/string to UTC-aware datetime for comparisons.
@@ -126,6 +150,7 @@ def init_db() -> None:
             )
             """
         )
+        _ensure_prompts_table(cur)
 
 
 def ensure_db_writable() -> None:
@@ -413,4 +438,54 @@ def set_fmp_cache(cache_key: str, payload: Dict[str, Any]) -> None:
                 VALUES (?, ?)
                 """,
                 (cache_key, json.dumps(payload or {})),
+            )
+
+
+def get_all_prompts() -> Dict[str, str]:
+    """Return all prompt overrides."""
+    init_db()
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT key, content FROM prompt_configs")
+        rows = _fetchall(cur)
+    return {row["key"]: row["content"] for row in rows}
+
+
+def get_prompt(key: str) -> Optional[str]:
+    """Return a prompt override by key, or None."""
+    init_db()
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        if DB_KIND == "postgres":
+            cur.execute("SELECT content FROM prompt_configs WHERE key = %s", (key,))
+        else:
+            cur.execute("SELECT content FROM prompt_configs WHERE key = ?", (key,))
+        row = _fetchone(cur)
+    return row["content"] if row else None
+
+
+def set_prompt(key: str, content: str) -> None:
+    """Upsert a prompt override."""
+    init_db()
+    now_iso = datetime.utcnow().isoformat()
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        if DB_KIND == "postgres":
+            cur.execute(
+                """
+                INSERT INTO prompt_configs(key, content, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE
+                SET content = EXCLUDED.content,
+                    updated_at = NOW()
+                """,
+                (key, content),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT OR REPLACE INTO prompt_configs(key, content, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                (key, content, now_iso),
             )

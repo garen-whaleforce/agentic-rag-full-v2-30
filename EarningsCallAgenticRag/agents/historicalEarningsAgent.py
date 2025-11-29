@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 import numpy as np
 from neo4j import GraphDatabase
 
-from agents.prompts.prompts import HISTORICAL_EARNINGS_SYSTEM_MESSAGE, historical_earnings_agent_prompt
+from agents.prompts.prompts import get_historical_earnings_system_message, historical_earnings_agent_prompt
 from utils.llm import build_chat_client, build_embeddings
 
 # -------------------------------------------------------------------------
@@ -247,7 +247,7 @@ class HistoricalEarningsAgent:
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": HISTORICAL_EARNINGS_SYSTEM_MESSAGE},
+                {"role": "system", "content": get_historical_earnings_system_message()},
                 {"role": "user", "content": prompt},
             ],
             top_p=1,

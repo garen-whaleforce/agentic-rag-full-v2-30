@@ -19,6 +19,15 @@ from pydantic import BaseModel, Field
 from uuid import uuid4
 
 from analysis_engine import analyze_earnings, analyze_earnings_async
+from prompt_service import save_prompt_override
+from EarningsCallAgenticRag.agents.prompts.prompts import (
+    get_main_agent_system_message,
+    get_extraction_system_message,
+    get_delegation_system_message,
+    get_comparative_system_message,
+    get_historical_earnings_system_message,
+    get_financials_system_message,
+)
 from fmp_client import (
     close_fmp_client,
     close_fmp_async_client,
@@ -39,6 +48,28 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Route B: Real-time Earnings Call Analysis")
 TRANSLATE_MODEL_DEFAULT = os.getenv("TRANSLATE_MODEL", "gpt-5-mini")
+EDITABLE_PROMPT_KEYS = [
+    "MAIN_AGENT_SYSTEM_MESSAGE",
+    "EXTRACTION_SYSTEM_MESSAGE",
+    "DELEGATION_SYSTEM_MESSAGE",
+    "COMPARATIVE_SYSTEM_MESSAGE",
+    "HISTORICAL_EARNINGS_SYSTEM_MESSAGE",
+    "FINANCIALS_SYSTEM_MESSAGE",
+]
+
+
+def _get_current_prompts_dict():
+    """
+    回傳目前生效中的六個 system prompts（default + DB override）。
+    """
+    return {
+        "MAIN_AGENT_SYSTEM_MESSAGE": get_main_agent_system_message(),
+        "EXTRACTION_SYSTEM_MESSAGE": get_extraction_system_message(),
+        "DELEGATION_SYSTEM_MESSAGE": get_delegation_system_message(),
+        "COMPARATIVE_SYSTEM_MESSAGE": get_comparative_system_message(),
+        "HISTORICAL_EARNINGS_SYSTEM_MESSAGE": get_historical_earnings_system_message(),
+        "FINANCIALS_SYSTEM_MESSAGE": get_financials_system_message(),
+    }
 
 
 def _build_async_openai_client() -> Tuple[Union[AsyncOpenAI, AsyncAzureOpenAI, None], dict]:
@@ -171,6 +202,16 @@ class TranslateResponse(BaseModel):
     comparative_agent_zh: str = ""
     historical_earnings_zh: str = ""
     historical_performance_zh: str = ""
+
+
+class PromptItem(BaseModel):
+    key: str
+    content: str
+
+
+class PromptUpdate(BaseModel):
+    key: str
+    content: str
 
 
 # In-memory batch job registry for background batch processing
@@ -493,6 +534,21 @@ async def api_translate(payload: TranslateRequest):
         historical_earnings_zh=str(data.get("historical_earnings_zh", "")).strip(),
         historical_performance_zh=str(data.get("historical_performance_zh", "")).strip(),
     )
+
+
+@app.get("/api/prompts", response_model=List[PromptItem])
+async def api_get_prompts():
+    current = _get_current_prompts_dict()
+    return [PromptItem(key=k, content=v) for k, v in current.items() if k in EDITABLE_PROMPT_KEYS]
+
+
+@app.put("/api/prompts")
+async def api_update_prompt(payload: PromptUpdate):
+    if payload.key not in EDITABLE_PROMPT_KEYS:
+        raise HTTPException(status_code=400, detail="Unknown prompt key")
+
+    save_prompt_override(payload.key, payload.content)
+    return {"status": "ok"}
 
 
 @app.get("/api/calls")

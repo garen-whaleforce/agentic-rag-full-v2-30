@@ -4,13 +4,15 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
+from prompt_service import get_prompt_override
+
 __all__ = [
-    "MAIN_AGENT_SYSTEM_MESSAGE",
-    "EXTRACTION_SYSTEM_MESSAGE",
-    "DELEGATION_SYSTEM_MESSAGE",
-    "COMPARATIVE_SYSTEM_MESSAGE",
-    "HISTORICAL_EARNINGS_SYSTEM_MESSAGE",
-    "FINANCIALS_SYSTEM_MESSAGE",
+    "get_main_agent_system_message",
+    "get_extraction_system_message",
+    "get_delegation_system_message",
+    "get_comparative_system_message",
+    "get_historical_earnings_system_message",
+    "get_financials_system_message",
     "comparative_agent_prompt",
     "historical_earnings_agent_prompt",
     "main_agent_prompt",
@@ -22,7 +24,8 @@ __all__ = [
     "baseline_prompt",
 ]
 
-MAIN_AGENT_SYSTEM_MESSAGE = """
+# === Main Agent System Message ===
+_DEFAULT_MAIN_AGENT_SYSTEM_MESSAGE = """
 You are a long-only equity portfolio manager.
 
 Your ONLY goal is to forecast the **one-trading-day price reaction** after an
@@ -40,34 +43,68 @@ Output must always end with a single line:
   Direction: <integer 0–10>
 """.strip()
 
-EXTRACTION_SYSTEM_MESSAGE = """
+
+def get_main_agent_system_message() -> str:
+    return get_prompt_override("MAIN_AGENT_SYSTEM_MESSAGE", _DEFAULT_MAIN_AGENT_SYSTEM_MESSAGE)
+
+
+# === Extraction System Message ===
+_DEFAULT_EXTRACTION_SYSTEM_MESSAGE = """
 You are a senior equity-research analyst extracting structured facts from
 earnings calls.
 
 You only output structured facts; you never output a summary or opinion.
 """.strip()
 
-DELEGATION_SYSTEM_MESSAGE = """
+
+def get_extraction_system_message() -> str:
+    return get_prompt_override("EXTRACTION_SYSTEM_MESSAGE", _DEFAULT_EXTRACTION_SYSTEM_MESSAGE)
+
+
+# === Delegation System Message ===
+_DEFAULT_DELEGATION_SYSTEM_MESSAGE = """
 You are the orchestration analyst deciding which helper tools should enrich
 each fact for short-term **one-day price reaction** prediction.
 
 You only output tool selections for each fact; you never explain yourself.
 """.strip()
 
-COMPARATIVE_SYSTEM_MESSAGE = (
+
+def get_delegation_system_message() -> str:
+    return get_prompt_override("DELEGATION_SYSTEM_MESSAGE", _DEFAULT_DELEGATION_SYSTEM_MESSAGE)
+
+
+# === Comparative System Message ===
+_DEFAULT_COMPARATIVE_SYSTEM_MESSAGE = (
     "You are an equity analyst specialising in cross-company comparisons "
     "within the same industry."
 )
 
-HISTORICAL_EARNINGS_SYSTEM_MESSAGE = (
+
+def get_comparative_system_message() -> str:
+    return get_prompt_override("COMPARATIVE_SYSTEM_MESSAGE", _DEFAULT_COMPARATIVE_SYSTEM_MESSAGE)
+
+
+# === Historical Earnings System Message ===
+_DEFAULT_HISTORICAL_EARNINGS_SYSTEM_MESSAGE = (
     "You are an equity analyst specialising in comparing management commentary "
     "across quarters."
 )
 
-FINANCIALS_SYSTEM_MESSAGE = (
+
+def get_historical_earnings_system_message() -> str:
+    return get_prompt_override("HISTORICAL_EARNINGS_SYSTEM_MESSAGE", _DEFAULT_HISTORICAL_EARNINGS_SYSTEM_MESSAGE)
+
+
+# === Financials System Message ===
+_DEFAULT_FINANCIALS_SYSTEM_MESSAGE = (
     "You are an equity analyst specialising in interpreting changes in "
     "financial statements over time."
 )
+
+
+def get_financials_system_message() -> str:
+    return get_prompt_override("FINANCIALS_SYSTEM_MESSAGE", _DEFAULT_FINANCIALS_SYSTEM_MESSAGE)
 
 
 def comparative_agent_prompt(

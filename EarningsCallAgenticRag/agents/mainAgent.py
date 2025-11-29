@@ -20,9 +20,9 @@ from typing import Any, Dict, List, Sequence, Union
 
 # ---- Centralised prompt imports -------------------------------------------
 from agents.prompts.prompts import (
-    DELEGATION_SYSTEM_MESSAGE,
-    EXTRACTION_SYSTEM_MESSAGE,
-    MAIN_AGENT_SYSTEM_MESSAGE,
+    get_delegation_system_message,
+    get_extraction_system_message,
+    get_main_agent_system_message,
     facts_delegation_prompt,
     facts_extraction_prompt,
     main_agent_prompt,
@@ -201,7 +201,7 @@ class MainAgent:
         for chunk in chunks:
             if not chunk:
                 continue
-            raw = self._chat(facts_extraction_prompt(chunk), system=EXTRACTION_SYSTEM_MESSAGE)
+            raw = self._chat(facts_extraction_prompt(chunk), system=get_extraction_system_message())
             items = _parse_items(raw)
             all_items.extend(items)
         return all_items
@@ -247,7 +247,7 @@ class MainAgent:
         # Step 1: Route facts using LLM
         routing_txt = self._chat(
             facts_delegation_prompt(items).replace("<list of peer tickers>", ", ".join(peers)),
-            system=DELEGATION_SYSTEM_MESSAGE,
+            system=get_delegation_system_message(),
         )
 
         # Step 2: Parse routing map
@@ -401,7 +401,7 @@ class MainAgent:
         print("\n==== MAIN AGENT FULL PROMPT ====")
         print(final_prompt)
         print("===============================\n")
-        return notes, self._chat(final_prompt, system=MAIN_AGENT_SYSTEM_MESSAGE)
+        return notes, self._chat(final_prompt, system=get_main_agent_system_message())
 
     # ---------------------------------------------------------------------
     # 4) Orchestrator
