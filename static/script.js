@@ -556,6 +556,36 @@ async function runAnalysis() {
       else if (postReturn < 0) kpiReturn.classList.add("neg");
     }
 
+    // Earnings Backtest display
+    const backtestSession = document.getElementById("backtest-session");
+    const backtestFrom = document.getElementById("backtest-from");
+    const backtestTo = document.getElementById("backtest-to");
+    const backtestChange = document.getElementById("backtest-change");
+    const bt = data.backtest;
+    if (bt && backtestSession && backtestFrom && backtestTo && backtestChange) {
+      const sessionLabel = bt.session === "BMO" ? "盤前 (BMO)" : bt.session === "AMC" ? "盤後 (AMC)" : "未知";
+      backtestSession.textContent = `${bt.earnings_date || "-"} ${sessionLabel}`;
+      const fmtPrice = (p) => (p != null ? `$${p.toFixed(2)}` : "N/A");
+      backtestFrom.textContent = bt.from_date ? `${bt.from_date}: ${fmtPrice(bt.from_close)}` : "-";
+      backtestTo.textContent = bt.to_date ? `${bt.to_date}: ${fmtPrice(bt.to_close)}` : "-";
+      if (bt.change_pct != null) {
+        const sign = bt.change_pct > 0 ? "+" : "";
+        backtestChange.textContent = `${sign}${bt.change_pct.toFixed(2)}%`;
+        backtestChange.classList.remove("pos", "neg");
+        if (bt.change_pct > 0) backtestChange.classList.add("pos");
+        else if (bt.change_pct < 0) backtestChange.classList.add("neg");
+      } else {
+        backtestChange.textContent = "N/A";
+        backtestChange.classList.remove("pos", "neg");
+      }
+    } else if (backtestSession && backtestFrom && backtestTo && backtestChange) {
+      backtestSession.textContent = "-";
+      backtestFrom.textContent = "-";
+      backtestTo.textContent = "-";
+      backtestChange.textContent = "-";
+      backtestChange.classList.remove("pos", "neg");
+    }
+
     const clean = (val) => {
       if (!val) return null;
       const s = String(val).trim();

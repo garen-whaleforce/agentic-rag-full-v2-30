@@ -14,6 +14,7 @@ from storage import (
     set_cached_payload,
 )
 from redis_cache import cache_get_json, cache_set_json
+from earnings_backtest import compute_earnings_backtest
 
 logger = logging.getLogger(__name__)
 PAYLOAD_CACHE_MINUTES = int(os.getenv("PAYLOAD_CACHE_MINUTES", "1440"))  # DB cache validity in minutes (default 1 day)
@@ -146,6 +147,17 @@ def analyze_earnings(
         # Do not block API if persistence fails
         logger.exception("record_analysis failed", exc_info=exc)
 
+    # Compute earnings backtest (BMO/AMC price change)
+    backtest = None
+    try:
+        backtest = compute_earnings_backtest(
+            symbol,
+            context.get("transcript_date") or "",
+            context.get("transcript_text") or "",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("compute_earnings_backtest failed for %s: %s", symbol, exc)
+
     payload = {
         "symbol": symbol,
         "year": year,
@@ -158,6 +170,7 @@ def analyze_earnings(
         "job_id": job_id,
         "agentic_result": agentic_result,
         "context": context,
+        "backtest": backtest,
     }
 
     return payload
@@ -249,6 +262,18 @@ async def analyze_earnings_async(
     except Exception as exc:
         logger.exception("record_analysis failed", exc_info=exc)
 
+    # Compute earnings backtest (BMO/AMC price change)
+    backtest = None
+    try:
+        backtest = await asyncio.to_thread(
+            compute_earnings_backtest,
+            symbol,
+            context.get("transcript_date") or "",
+            context.get("transcript_text") or "",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("compute_earnings_backtest failed for %s: %s", symbol, exc)
+
     payload = {
         "symbol": symbol,
         "year": year,
@@ -261,6 +286,7 @@ async def analyze_earnings_async(
         "job_id": job_id,
         "agentic_result": agentic_result,
         "context": context,
+        "backtest": backtest,
     }
 
     try:

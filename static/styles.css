@@ -665,6 +665,42 @@ th {
   }
 }
 
+/* Earnings Backtest */
+.backtest-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.backtest-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.backtest-row .label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.backtest-row span:last-child {
+  font-weight: 600;
+  color: var(--text);
+}
+
+#backtest-change.pos {
+  color: var(--success);
+}
+
+#backtest-change.neg {
+  color: var(--danger);
+}
+
 @media (max-width: 640px) {
   .search-row,
   .dates-row {
