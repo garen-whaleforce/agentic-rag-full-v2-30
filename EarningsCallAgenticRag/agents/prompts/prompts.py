@@ -107,64 +107,48 @@ def get_financials_system_message() -> str:
     return get_prompt_override("FINANCIALS_SYSTEM_MESSAGE", _DEFAULT_FINANCIALS_SYSTEM_MESSAGE)
 
 
+# ============================================================================
+# PROMPT FUNCTIONS
+# ============================================================================
+
 def comparative_agent_prompt(
     facts: List[Dict[str, Any]],
     related_facts: List[Dict[str, Any]],
     self_ticker: str | None = None,
 ) -> str:
-    """Prompt template for the peer-comparison helper agent."""
-    ticker_section = (
-        f"\nThe company you are analysing has ticker: {self_ticker}" if self_ticker else ""
-    )
+    """Return the prompt for the *Comparative Peers* analysis agent.
 
+    Parameters
+    ----------
+    facts
+        A list of facts extracted from the current firm's earnings call.
+    related_facts
+        A list of facts from comparable peer firms.
+    self_ticker
+        The ticker symbol of the firm being analyzed.
+    """
+    ticker_section = f"\n\nThe ticker of the firm being analyzed is: {self_ticker}" if self_ticker else ""
     return f"""
-You are an equity analyst specialising in **peer comparison within the same industry**.{ticker_section}
+You are analyzing a company's earnings call transcript alongside statements made by similar firms.{ticker_section}
 
-Your goal is to evaluate how this company's latest earnings message differs from
-its peers in a way that could matter for the **one-trading-day price reaction**.
-
-### Current company facts (latest quarter)
+The batch of facts about the firm is:
 {json.dumps(facts, indent=2, ensure_ascii=False)}
 
-### Peer facts (similar metrics from comparable firms)
+Comparable firms discuss the facts in the following way:
 {json.dumps(related_facts, indent=2, ensure_ascii=False)}
 
-### Tasks
-1. For each important metric (revenue growth, margins, cash flow, guidance, etc.):
-   - State whether the company is **stronger, weaker, or in line** vs peers.
-   - Note whether management tone is **more optimistic, neutral, or cautious** vs peers.
-2. Highlight **where the company is clearly differentiated** (positively or negatively).
-3. End with 3 bullet points under "Implications for near-term price reaction".
+Your task is:
+- Describe how the firm's reasoning about their own performance differs from other firms, for each fact if possible.
+- Cite factual evidence from historical calls.
 
-### Output structure (bilingual; keep numbers consistent across languages)
+Keep your analysis concise. Do not discuss areas not mentioned.
 
-English
-- **Relative performance vs peers**
-  - <Metric 1>: <stronger / weaker / in line>, <one sentence explanation>
-  - <Metric 2>: ...
-- **Tone vs peers**
-  - <one or two sentences comparing tone>
-- **Implications for near-term price reaction**
-  - Bullet 1
-  - Bullet 2
-  - Bullet 3
-
-Traditional Chinese (繁體中文，與英文內容對應)
-- **相對同業表現**
-  - <Metric 1>：<強於 / 弱於 / 持平>，<簡要說明>
-  - ...
-- **語氣 vs 同業**
-  - <一到兩句比較語氣>
-- **對隔日股價的啟示**
-  - 重點 1
-  - 重點 2
-  - 重點 3
-
-Use ONLY the facts shown above. Do not assume external consensus, news, or valuations.
-
-At the end, add a 1–2 sentence English TL;DR explicitly stating:
-- whether the company is **stronger / weaker / in line vs peers overall**, and
-- whether this is more consistent with an **Up / Down / flat** one-day reaction.
+Bilingual requirement:
+- First, produce the full analysis in **English**, following the exact format specified above.
+- Then, produce a second section titled **"Traditional Chinese (繁體中文)"**
+  where you translate the same headings, bullet points, and conclusions
+  into Traditional Chinese, preserving the same ordering, structure,
+  and all numeric values.
 """.strip()
 
 
@@ -173,110 +157,102 @@ def historical_earnings_agent_prompt(
     related_facts: List[Dict[str, Any]],
     current_quarter: str | None = None,
 ) -> str:
-    """Prompt template for comparing current commentary vs the firm's own past calls."""
-    quarter_label = f"from {current_quarter}" if current_quarter else "for the current quarter"
+    """
+    Return the prompt for the *Historical Earnings* analysis agent.
 
+    Parameters
+    ----------
+    fact : dict
+        The current fact from the firm's latest earnings call.
+    related_facts : list of dict
+        A list of related facts drawn from the firm's own previous calls.
+    current_quarter : str
+        The current fiscal quarter (e.g., 'Q2 2025').
+    """
+    quarter_label = current_quarter if current_quarter else "the current quarter"
     return f"""
-You are an equity analyst specialising in comparing a company's **current earnings call**
-with its **own past calls**.
+You are analyzing a company's earnings call transcript alongside facts from its own past earnings calls.
 
-Your goal is to understand whether current commentary represents an
-**improvement, deterioration, or no major change** vs history, in a way that could
-move the stock on the **next trading day**.
-
-### Current fact {quarter_label}
+The list of current facts are:
 {json.dumps(fact, indent=2, ensure_ascii=False)}
 
-### Related historical facts (previous quarters)
+It is reported in the quarter {quarter_label}
+
+Here is a JSON list of related facts from the firm's previous earnings calls:
 {json.dumps(related_facts, indent=2, ensure_ascii=False)}
 
-### Tasks
-1. For this topic, identify the **most relevant 1-3 historical facts**.
-2. For the underlying metric or theme, classify the trend as:
-   - **Accelerating**, **Decelerating**, or **Broadly in line**.
-3. Call out:
-   - Where management is **more optimistic or more cautious** than before.
-   - Where actual results **beat, meet, or miss** what they previously guided.
+TASK
+────
+1. **Validate past guidance**
+   ▸ For every forward-looking statement made in previous quarters, state whether the firm met, beat, or missed that guidance in `{quarter_label}`.
+   ▸ Reference concrete numbers (e.g., "Revenue growth was 12 % vs. the 10 % guided in 2024-Q3").
+   ▸ Omit if you cannot provide a direct comparison
 
-### Output structure (bilingual; keep the same claims in both languages)
+2. **Compare results discussed**
+    ▸ Compare the results being discussed.
+    ▸ Reference concrete numbers
 
-English
-- **Fact-level comparison**
-  - <Metric / topic>: <Accelerating / Decelerating / In line>
-    - Evidence: <one short sentence referencing current vs past numbers/wording>
-- **Key historical context for near-term reaction**
-  - Bullet 1
-  - Bullet 2
-  - Bullet 3
+3. **Provide supporting evidence.**
+   ▸ Quote or paraphrase the relevant historical statement, then cite the matching current-quarter metric.
+   ▸ Format each evidence line as
+     `• <metric>: <historical statement> → <current result>`.
 
-Traditional Chinese (繁體中文)
-- **事實比較**
-  - <指標 / 主題>：<加速 / 放緩 / 大致持平>
-    - 證據：<一短句，對照本季與過去數字/措辭>
-- **對隔日股價的關鍵歷史脈絡**
-  - 重點 1
-  - 重點 2
-  - 重點 3
+4. **Highlight unexpected outcomes.**
+   ▸ Identify any areas where management *did not* address an important historical comparison, or where the result diverged sharply from trend/expectations.
+   ▸ Explain why the omission or divergence matters to investors.
 
-Keep it concise and focus only on changes that could affect the **one-day** price reaction.
-Use ONLY the information in the facts above.
+Keep your analysis concise. Prioritize more recent quarters. Do not discuss areas not mentioned.
 
-At the end, add a 1–2 sentence English TL;DR explicitly stating:
-- whether this quarter looks **better / worse / similar vs the company’s own history**, and
-- whether this is more consistent with an **Up / Down / flat** one-day reaction.
+Bilingual requirement:
+- After you complete the analysis in English using the structure described above,
+  add a second section titled **"Traditional Chinese (繁體中文)"**.
+- In that section, translate each heading, bullet point, and conclusion
+  into Traditional Chinese, keeping the structure and numbers identical.
 """.strip()
 
 
 def financials_statement_agent_prompt(
     fact: Dict[str, Any],
     similar_facts: list,
+    quarter: str | None = None,
 ) -> str:
-    """Prompt template for analysing quantitative changes in financials."""
+    """Prompt template for analysing the current fact in the context of most similar past facts."""
+    quarter_label = quarter if quarter else "the current quarter"
     return f"""
-You are an equity analyst specialising in **financial statements**.
+You are reviewing the company's {quarter_label} earnings-call transcript and comparing a key fact to the most similar historical facts from previous quarters.
 
-Your ONLY objective is to interpret the **quantitative changes** in this company's
-financials in a way that matters for the **near-term (one-trading-day) price reaction**.
-
-### Inputs
-- Current-quarter quantitative facts (JSON list or dict):
+────────────────────────────────────────
+Current fact (from {quarter_label}):
 {json.dumps(fact, indent=2, ensure_ascii=False)}
 
-- Most similar quantitative facts from previous quarters:
+Most similar past facts (from previous quarters):
 {json.dumps(similar_facts, indent=2, ensure_ascii=False)}
+────────────────────────────────────────
 
-### Tasks
-1. For each major metric (revenue, EPS, margins, cash flow, leverage, etc.):
-   - Compare the current value to historical values.
-   - Classify the change as **Better**, **Worse**, or **Broadly in line**.
-2. Highlight **large changes** (e.g. >10% growth swing, >5 percentage-point margin delta)
-   and state whether they are likely **positive or negative** for the **near-term** price.
-3. Point out any **one-off items** or unsustainable drivers if they are explicitly mentioned.
+Your tasks:
 
-### Output structure (bilingual; identical logic in both languages)
+1. **Direct comparison**
+   • Compare the current fact to each of the most similar past facts. For each, note the quarter, the metric, and the value.
+   • Highlight similarities, differences, and any notable trends or changes.
+   • If the current value is higher/lower/similar to the most recent similar fact, state this explicitly.
 
-English
-- **Metric-level assessment**
-  - <Metric>: <Better / Worse / In line>, <one short sentence with numbers or direction>
-- **Key financial takeaways for near-term price reaction**
-  - Bullet 1
-  - Bullet 2
-  - Bullet 3
+2. **Supported outcomes**
+   • Identify areas where management explicitly addressed historical comparisons and the numbers confirm their comments.
 
-Traditional Chinese (繁體中文)
-- **指標級判讀**
-  - <指標>：<優於 / 劣於 / 持平>，<帶數字或方向的一句說明>
-- **對隔日股價的財務重點**
-  - 重點 1
-  - 重點 2
-  - 重點 3
+3. **Unexpected outcomes**
+   • Highlight results that management did **not** address or that diverge sharply from historical trends, and explain why this matters to investors.
 
-Be concise. Use ONLY the numbers and facts shown in the inputs.
-Do NOT guess or fabricate figures that are not provided.
+Focus on improvements on bottom line performance (eg. net income)
 
-At the end, add a 1–2 sentence English TL;DR explicitly stating:
-- whether the financial statements look **strong / weak / mixed**, and
-- whether this is more consistent with an **Up / Down / flat** one-day reaction.
+*Note: Figures may be stated in ten-thousands (万) or hundreds of millions (亿). Make sure to account for these scale differences when comparing values.*
+
+Keep your analysis concise. Prioritize more recent quarters. Do not discuss areas not mentioned.
+
+Bilingual requirement:
+- First, output the full financial analysis in **English** exactly as specified above.
+- Then, output a second section titled **"Traditional Chinese (繁體中文)"**,
+  which is a translation of the English section into Traditional Chinese.
+- The headings, bullet ordering, and all numeric values must be preserved.
 """.strip()
 
 
@@ -292,53 +268,24 @@ def memory(all_notes, actual_return):
         Realized next-day return after the prior call (string).
     """
     return f"""
-You previously wrote the following research note for this company:
-
-<Previous note>
-{all_notes}
-
-After that call, the stock moved {actual_return} on the first trading day.
-
-When forming your new view, briefly reflect on whether your previous note was
-too optimistic or too pessimistic relative to the actual move, and slightly
-adjust your Direction score if appropriate. Do NOT over-correct; use this
-only as a mild calibration signal.
+You have memory on how your previous prediction on the firm faired.
+Your previous research note is given as:
+{all_notes},
+The actual return achieved by your previous note was : {actual_return}
 """.strip()
 
 
 def main_agent_prompt(
     notes,
-    all_notes = None,
+    all_notes=None,
     original_transcript: str | None = None,
     memory_txt: str | None = None,
     financial_statements_facts: str | None = None,
     qoq_section: str | None = None,
 ) -> str:
-    """
-    Combine helper notes and optional transcript into the final PM verdict prompt.
-
-    Parameters
-    ----------
-    notes : dict
-        Typically shaped like {"financials": "...", "past": "...", "peers": "..."}.
-    all_notes : Any
-        Reserved for pipeline compatibility.
-    original_transcript : str | None
-        Full or truncated earnings call transcript.
-    memory_txt : str | None
-        Calibration memory generated by `memory`.
-    financial_statements_facts : str | None
-        Additional quantitative facts (YoY).
-    qoq_section : str | None
-        Quarter-on-quarter facts if available.
-    """
-    transcript_section = ""
-    if original_transcript:
-        transcript_section = f"""
----
-Latest earnings call transcript (full, not pre-summarised or truncated):
-{original_transcript}
----"""
+    """Prompt for the *Main* decision-making agent, requesting just an
+    Up/Down call plus a confidence score (0-10)."""
+    transcript_section = f"\nORIGINAL EARNINGS CALL TRANSCRIPT:\n---\n{original_transcript}\n---\n" if original_transcript else ""
 
     financial_statements_section = ""
     if financial_statements_facts:
@@ -346,219 +293,162 @@ Latest earnings call transcript (full, not pre-summarised or truncated):
 ---
 Financial Statements Facts (YoY):
 {financial_statements_facts}
----"""
+---
+"""
 
     qoq_section_str = ""
     if qoq_section:
-        qoq_section_str = f"""
----
-Quarter-on-Quarter Changes:
-{qoq_section}
----"""
+        qoq_section_str = f"\n---\nQuarter-on-Quarter Changes:\n{qoq_section}\n---\n"
 
-    calibration_section = ""
+    memory_section = ""
     if memory_txt:
-        calibration_section = f"""
----
-Calibration memory:
-{memory_txt}
----"""
+        memory_section = f"\n{memory_txt}\n"
 
     return f"""
-You are a long-only portfolio manager focused on the **one-trading-day price move
-after an earnings call**.
+You are a portfolio manager and you are reading an earnings call transcript.{transcript_section}
+decide whether the stock price is likely to **increase ("Up") or decrease ("Down")**
+one trading day after the earnings call, and assign a **Direction score** from 0 to 10.
 
-Your ONLY objective is to judge the likely **one-trading-day price reaction** after
-the earnings call, not long-term fundamentals or multi-month performance.
+The original transcript is:
 
-Your job:
-1. Read the three specialist notes below (financials, history, peers).
-2. Combine them into a single view of how the market is likely to react **tomorrow**.
-3. Output a concise explanation plus a **Direction score from 0 to 10**.
+{original_transcript}
 
-### Specialist notes
-- **Financials vs history (YoY/QoQ, margins, cash flow)**  
-{notes.get('financials', '')}
-
-- **Company vs its own past calls (guidance credibility & narrative shifts)**  
-{notes.get('past', '')}
-
-- **Company vs peers (relative growth, margins, and tone)**  
-{notes.get('peers', '')}
 {financial_statements_section}
 {qoq_section_str}
-{calibration_section}
-{transcript_section}
+---
+Financials-vs-History note:
+{notes.get('financials', '')}
 
-### Decision rules
-- Optimise for the **next trading day reaction**, not long-term fundamentals.
-- Give the most weight to:
-  1. Positive/negative **surprises vs recent trend and expectations**,
-  2. Changes in **guidance, demand, and profitability**, and
-  3. Whether the company looks **better or worse than peers**.
-- If signals conflict, prioritise guidance and clear surprises over small numerical noise.
-- Use ONLY the information above; do NOT invent external data (e.g. consensus or news).
+Historical-Calls note:
+{notes.get('past', '')}
 
-### Direction scale (must be consistent with your reasoning)
-- 0-3  = you expect a clear **Down** move.
-- 4-6  = reaction is likely **flat / very uncertain**.
-- 7-10 = you expect a clear **Up** move.
+Peer-Comparison note:
+{notes.get('peers', '')}
 
-### Output format (MUST FOLLOW EXACTLY; bilingual summaries with ONE direction line)
+{memory_section}
+---
 
-1. English (2–4 sentences):
-   - Explain why you expect Up / Down / flat for the **next trading day**.
-   - Explicitly refer to: (a) financials, (b) past calls, (c) peers.
-2. Traditional Chinese (繁體中文, 2–4 句)：
-   - 與英文一致的結論與理由，重點放在隔日股價反應。
-3. One single direction line (in English), on its own line:
-   Direction: <integer 0–10>
+Instructions:
+1. Assign a confidence score (0 = strong conviction of decline, 5 = neutral, 10 = strong conviction of rise).
+2. Evaluate all three notes together
+3. Consider the financial statements facts when available
+4. Pay special attention to the year on year changes section, especially on bottom line figures (eg. net profit)
 
-Do NOT use the word "Direction" anywhere else in your answer.
+Respond in **exactly** this format:
 
-Example (structure only):
+<Couple of sentences of Explanation>
 
-English: Management cut guidance and highlighted demand headwinds, while peers are more optimistic. This makes a negative one-day reaction more likely.
-中文：公司下修財測並強調需求逆風，且同業語氣更樂觀，因此隔日股價下跌機率較高。
-Direction: 3
+**Summary: <Two sentences supporting your verdict with facts and evidence>, Direction : <0-10>**
+
+Bilingual requirement:
+- First, produce the full output in **English** exactly following the format
+  and examples specified above, including the final "Direction" line.
+- After you have produced the English output, append a second section where you
+  translate the entire explanation (but not the numeric score) into
+  Traditional Chinese (繁體中文), preserving the same reasoning and structure.
+- Do NOT modify the English output or its format; the Chinese section must come
+  AFTER the English output.
 """.strip()
 
 
 def facts_extraction_prompt(transcript_chunk: str) -> str:
     """
-    Prompt for chunk-based fact extraction.
+    Build the LLM prompt that asks for five specific data classes
+    (Result, Forward-Looking, Risk Disclosure, Sentiment, and Macro)
+    from a single earnings-call transcript chunk.
     """
     return f"""
-You are a senior equity-research analyst extracting structured facts from an
-earnings call transcript.
+You are a senior equity-research analyst.
 
-Your ONLY objective is to identify as many **distinct, decision-relevant facts**
-as possible from the text below. Facts should be things like:
-- Reported results (revenue, EPS, margins, cash flow, segment performance)
-- Forward-looking statements (guidance, outlook, demand commentary, capex plans)
-- Risks and uncertainties (headwinds, competition, regulatory issues)
-- Sentiment / tone (confidence, caution, repeated emphasis)
-- Macro or industry-wide observations that affect the company
+### TASK
+Extract **only** the following five classes from the transcript below.
+Ignore moderator chatter, safe-harbor boiler-plate, and anything that doesn't match one of these classes.
 
-The transcript chunk is:
+1. **Result** – already-achieved financial or operating results
+2. **Forward-Looking** – any explicit future projection, target, plan, or guidance
+3. **Risk Disclosure** – statements highlighting current or expected obstacles
+   (e.g., FX headwinds, supply-chain issues, regulation)
+4. **Sentiment** – management's overall tone (Positive, Neutral, or Negative);
+   cite key wording that informs your judgment.
+5. **Macro** – discussion of how the macro-economic landscape affects the firm
+
+The transcript is {transcript_chunk}
+
+Output as many items as you can find, ideally 30-70. You MUST output more than 30 facts.
+Do not include [ORG] in your response.
 ---
-{transcript_chunk}
----
 
-### How to extract facts
+### OUTPUT RULES
+* Use the exact markdown block below for **every** extracted item.
+* Increment the item number sequentially (1, 2, 3 …).
+* One metric per block; never combine multiple metrics.
 
-- Split the text into **30-70 concise facts** if possible; do not merge unrelated points.
-- Each fact should focus on **one main metric or theme**.
-- Use the most specific metric name you can (e.g. "Cloud revenue growth" not just "growth").
-
-### OUTPUT FORMAT (STRICT)
-
-Return ONLY a sequence of markdown blocks in this exact form, with no extra text
-before, between, or after the blocks:
-
+Example output:
 ### Fact No. 1
 - **Type:** <Result | Forward-Looking | Risk Disclosure | Sentiment | Macro>
-- **Metric:** <short metric name>
-- **Value:** <numeric or qualitative value exactly as stated, if possible>
-- **Context:** <short explanation of why this fact matters>
+- **Metric:** Revenue
+- **Value:** "3 million dollars"
+- **Reason:** Quarter was up on a daily organic basis, driven primarily by core non-pandemic product sales.
 
-### Fact No. 2
-- **Type:** ...
-- **Metric:** ...
-- **Value:** ...
-- **Context:** ...
-
-...
-
-Rules:
-- You MUST output more than 30 facts if the text is long enough.
-- Do NOT include any anonymisation tags like [ORG]; use plain company / product names.
-- Do NOT add commentary outside the specified fields.
-- Use ONLY information from the transcript chunk above; do not invent numbers or facts.
-- 合併明顯重複的陳述：如果同一段話只是在用不同措辭重覆同一個數字或結論，合併成一個 Fact。
-- 正規化數字：盡量把成長率寫成「+X% YoY / QoQ」，利潤率寫成「X% margin」，避免只寫「higher / lower」。
 """.strip()
 
 
 def facts_delegation_prompt(facts: List) -> str:
+    """Return the prompt used for routing facts to helper tools.
+
+    Parameters
+    ----------
+    facts
+        A list of extracted facts from the earnings call.
     """
-    Prompt for assigning facts to helper tools.
-    """
-    facts_json = json.dumps(facts, indent=2, ensure_ascii=False)
+    return f"""You are the RAG-orchestration analyst for an earnings-call workflow.
 
-    return f"""
-You are the RAG-orchestration analyst for an earnings-call workflow.
+## Objective
+For **each fact** listed below, decide **which (if any) of the three tools** will
+help you gauge its potential impact on the company's share price **one trading
+day after the call**.
 
-You are given a list of extracted facts from the latest earnings call. For each
-fact, you must decide which retrieval tools would add useful context for
-predicting the **one-trading-day price reaction** after the call.
+### Available Tools
+1. **InspectPastStatements**
+   • Retrieves historical income-statement, balance-sheet, and cash-flow data
+   • **Use when** the fact cites a standard, repeatable line-item
+     (e.g., revenue, EBITDA, free cash flow, margins)
 
-Here are the extracted facts (JSON list or dict):
-{facts_json}
+2. **QueryPastCalls**
+   • Fetches the same metric or statement from prior earnings calls
+   • **Use when** comparing management's current commentary with its own
+     previous statements adds context
 
-Known peer tickers for this company (if any):
-<list of peer tickers>
+3. **CompareWithPeers**
+   • Provides the same metric from peer companies' calls or filings
+   • **Use when** competitive benchmarking clarifies whether the fact signals
+     outperformance, underperformance, or parity
 
-Facts that explicitly relate to **relative performance vs these peers** or to
-**market share / competitiveness** should usually be assigned to CompareWithPeers.
+---
+The facts are: {facts}
 
-Available tools:
-1. InspectPastStatements  - pull prior financial statement data around this metric.
-2. QueryPastCalls         - pull this company's own past commentary on this topic.
-3. CompareWithPeers       - pull similar metrics from comparable firms.
+Output your answers in the following form:
 
-Some facts may benefit from multiple tools; others may not need any extra context.
+InspectPastStatements: Fact No <2, 4, 6>
+CompareWithPeers:  Fact No <10>
+QueryPastCalls: Fact No <1, 3, 5>
 
-### OUTPUT FORMAT (STRICT)
+*One fact may appear under multiple tools if multiple comparisons are helpful.*
 
-Output exactly three lines, and nothing else:
-
-InspectPastStatements: Fact No <comma-separated integers, or empty if none>
-QueryPastCalls: Fact No <comma-separated integers, or empty if none>
-CompareWithPeers: Fact No <comma-separated integers, or empty if none>
-
-Examples:
-InspectPastStatements: Fact No 2, 4, 6
-QueryPastCalls: Fact No 1, 3, 5
-CompareWithPeers: Fact No 10
-
-or, if a tool is not needed:
-
-InspectPastStatements: Fact No
-QueryPastCalls: Fact No 1, 2
-CompareWithPeers: Fact No 3
-
-Rules:
-- Use ONLY the facts shown above.
-- Prefer InspectPastStatements for **numerical metrics** (revenue, margins, cash flow).
-- Prefer QueryPastCalls for **guidance, strategy, and management narrative**.
-- Prefer CompareWithPeers for **relative performance or competitive positioning**.
-- Do NOT explain your choices. Do NOT add any other text.
 """.strip()
 
 
 peer_discovery_ticker_prompt = """
-You are a financial analyst.
+You are a financial analyst. Based on the company with ticker {ticker}, list 5 close peer companies that are in the same or closely related industries.
 
-Given a public company with ticker {ticker}, identify **8–10 close peer companies**
-whose primary businesses are in the same or very closely related industries.
-
-Selection rules:
-- Core business in the same value chain (similar products, services, end-markets),
-  not just the same sector code.
-- Prefer companies listed in the U.S. or as ADRs when possible.
-- Prefer similar business model and revenue mix.
-- Avoid ETFs, indices, funds, preferred shares, warrants, and acquired/delisted companies.
-- Market cap and scale should be broadly comparable (roughly within 0.25x–4x of the target).
-
-Output:
-- Return **ONLY** a JSON array of unique ticker symbols (strings), 8–10 tickers.
-- No comments, no explanations, no trailing commas.
-
-Example:
-["AAPL", "MSFT", "GOOGL"]
+Only output a Python-style list of tickers, like:
+["AAPL", "GOOGL", "AMZN", "MSFT", "ORCL"]
 """
 
+
+# ============================================================================
+# BASELINE PROMPTS
+# ============================================================================
 
 def baseline_prompt(transcript) -> str:
     return f"""
