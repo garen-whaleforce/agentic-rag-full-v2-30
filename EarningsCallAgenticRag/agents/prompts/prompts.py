@@ -13,6 +13,8 @@ __all__ = [
     "get_comparative_system_message",
     "get_historical_earnings_system_message",
     "get_financials_system_message",
+    "get_default_system_prompts",
+    "get_all_default_prompts",
     "comparative_agent_prompt",
     "historical_earnings_agent_prompt",
     "main_agent_prompt",
@@ -23,6 +25,10 @@ __all__ = [
     "memory",
     "baseline_prompt",
 ]
+
+# ============================================================================
+# SYSTEM MESSAGES (6)
+# ============================================================================
 
 # === Main Agent System Message ===
 _DEFAULT_MAIN_AGENT_SYSTEM_MESSAGE = """
@@ -79,34 +85,18 @@ def get_financials_system_message() -> str:
 
 
 # ============================================================================
-# PROMPT FUNCTIONS
+# PROMPT TEMPLATES (9)
+# Use {{variable}} placeholders - will be replaced at runtime
 # ============================================================================
 
-def comparative_agent_prompt(
-    facts: List[Dict[str, Any]],
-    related_facts: List[Dict[str, Any]],
-    self_ticker: str | None = None,
-) -> str:
-    """Return the prompt for the *Comparative Peers* analysis agent.
-
-    Parameters
-    ----------
-    facts
-        A list of facts extracted from the current firm's earnings call.
-    related_facts
-        A list of facts from comparable peer firms.
-    self_ticker
-        The ticker symbol of the firm being analyzed.
-    """
-    ticker_section = f"\n\nThe ticker of the firm being analyzed is: {self_ticker}" if self_ticker else ""
-    return f"""
-You are analyzing a company's earnings call transcript alongside statements made by similar firms.{ticker_section}
+_DEFAULT_COMPARATIVE_AGENT_PROMPT = """
+You are analyzing a company's earnings call transcript alongside statements made by similar firms.{{ticker_section}}
 
 The batch of facts about the firm is:
-{json.dumps(facts, indent=2)}
+{{facts}}
 
 Comparable firms discuss the facts in the following way:
-{json.dumps(related_facts, indent=2)}
+{{related_facts}}
 
 Your task is:
 - Describe how the firm's reasoning about their own performance differs from other firms, for each fact if possible.
@@ -123,39 +113,21 @@ Bilingual requirement:
 """.strip()
 
 
-def historical_earnings_agent_prompt(
-    fact: Dict[str, Any],
-    related_facts: List[Dict[str, Any]],
-    current_quarter: str | None = None,
-) -> str:
-    """
-    Return the prompt for the *Historical Earnings* analysis agent.
-
-    Parameters
-    ----------
-    fact : dict
-        The current fact from the firm's latest earnings call.
-    related_facts : list of dict
-        A list of related facts drawn from the firm's own previous calls.
-    current_quarter : str
-        The current fiscal quarter (e.g., 'Q2 2025').
-    """
-    quarter_label = current_quarter if current_quarter else "the current quarter"
-    return f"""
+_DEFAULT_HISTORICAL_EARNINGS_AGENT_PROMPT = """
 You are analyzing a company's earnings call transcript alongside facts from its own past earnings calls.
 
 The list of current facts are:
-{json.dumps(fact, indent=2)}
+{{fact}}
 
-It is reported in the quarter {quarter_label}
+It is reported in the quarter {{quarter_label}}
 
 Here is a JSON list of related facts from the firm's previous earnings calls:
-{json.dumps(related_facts, indent=2)}
+{{related_facts}}
 
 TASK
 ────
 1. **Validate past guidanced**
-   ▸ For every forward-looking statement made in previous quarters, state whether the firm met, beat, or missed that guidance in `{quarter_label}`.
+   ▸ For every forward-looking statement made in previous quarters, state whether the firm met, beat, or missed that guidance in `{{quarter_label}}`.
    ▸ Reference concrete numbers (e.g., "Revenue growth was 12 % vs. the 10 % guided in 2024-Q3").
    ▸ Omit if you cannot provide a direct comparison
 
@@ -178,22 +150,15 @@ Bilingual requirement:
 """.strip()
 
 
-def financials_statement_agent_prompt(
-    fact: Dict[str, Any],
-    similar_facts: list,
-    quarter: str | None = None,
-) -> str:
-    """Prompt template for analysing the current fact in the context of most similar past facts."""
-    quarter_label = quarter if quarter else "the current quarter"
-    return f"""
-You are reviewing the company's {quarter_label} earnings-call transcript and comparing a key fact to the most similar historical facts from previous quarters.
+_DEFAULT_FINANCIALS_STATEMENT_AGENT_PROMPT = """
+You are reviewing the company's {{quarter_label}} earnings-call transcript and comparing a key fact to the most similar historical facts from previous quarters.
 
 ────────────────────────────────────────
-Current fact (from {quarter_label}):
-{json.dumps(fact, indent=2)}
+Current fact (from {{quarter_label}}):
+{{fact}}
 
 Most similar past facts (from previous quarters):
-{json.dumps(similar_facts, indent=2)}
+{{similar_facts}}
 ────────────────────────────────────────
 
 Your tasks:
@@ -220,77 +185,29 @@ Bilingual requirement:
 """.strip()
 
 
-def memory(all_notes, actual_return):
-    """
-    Combine prior note and realized move for calibration.
-
-    Parameters
-    ----------
-    all_notes
-        Prior research notes about the company.
-    actual_return
-        Realized next-day return after the prior call (string).
-    """
-    return f"""
-    You have memory on how your previous prediction on the firm faired.
-    Your previous research note is given as:
-    {all_notes},
-    The actual return achieved by your previous note was : {actual_return}
-    """
-
-
-def main_agent_prompt(
-    notes,
-    all_notes=None,
-    original_transcript: str | None = None,
-    memory_txt: str | None = None,
-    financial_statements_facts: str | None = None,
-    qoq_section: str | None = None,
-) -> str:
-    """Prompt for the *Main* decision-making agent, requesting just an
-    Up/Down call plus a confidence score (0-100)."""
-    transcript_section = f"\nORIGINAL EARNINGS CALL TRANSCRIPT:\n---\n{original_transcript}\n---\n" if original_transcript else ""
-
-    financial_statements_section = ""
-    if financial_statements_facts:
-        financial_statements_section = f"""
----
-Financial Statements Facts (YoY):
-{financial_statements_facts}
----
-"""
-
-    qoq_section_str = ""
-    if qoq_section:
-        qoq_section_str = f"\n---\nQuarter-on-Quarter Changes:\n{qoq_section}\n---\n"
-
-    memory_section = ""
-    if memory_txt:
-        memory_section = f"\n{memory_txt}\n"
-
-    return f"""
-You are a portfolio manager and you are reading an earnings call transcript.{transcript_section}
+_DEFAULT_MAIN_AGENT_PROMPT = """
+You are a portfolio manager and you are reading an earnings call transcript.{{transcript_section}}
 decide whether the stock price is likely to **increase ("Up") or decrease ("Down")**
 one trading day after the earnings call, and assign a **Direction score** from 0 to 10.
 
 The original transcript is:
 
-{original_transcript}
+{{original_transcript}}
 
-{financial_statements_section}
-+{qoq_section_str}
+{{financial_statements_section}}
++{{qoq_section_str}}
 ---
 Financials-vs-History note:
-{notes['financials']}
+{{notes_financials}}
 
 Historical-Calls note:
-{notes['past']}
+{{notes_past}}
 
 Peer-Comparison note:
-{notes['peers']}
+{{notes_peers}}
 
 
-{memory_section}
+{{memory_section}}
 
 ---
 
@@ -317,13 +234,7 @@ Bilingual requirement:
 """.strip()
 
 
-def facts_extraction_prompt(transcript_chunk: str) -> str:
-    """
-    Build the LLM prompt that asks for five specific data classes
-    (Result, Forward-Looking, Risk Disclosure, Sentiment, and Macro)
-    from a single earnings-call transcript chunk.
-    """
-    return f"""
+_DEFAULT_FACTS_EXTRACTION_PROMPT = """
 You are a senior equity-research analyst.
 
 ### TASK
@@ -338,7 +249,7 @@ Ignore moderator chatter, safe-harbor boiler-plate, and anything that doesn't ma
    cite key wording that informs your judgment.
 5. **Macro** – discussion of how the macro-economic landscape affects the firm
 
-The transcript is {transcript_chunk}
+The transcript is {{transcript_chunk}}
 
 Output as many items as you can find, ideally 30-70. You MUST output more than 30 facts.
 Do not include [ORG] in your response.
@@ -356,18 +267,11 @@ Example output:
 - **Value:** "3 million dollars"
 - **Reason:** Quarter was up on a daily organic basis, driven primarily by core non-pandemic product sales.
 
-"""
+""".strip()
 
 
-def facts_delegation_prompt(facts: List) -> str:
-    """Return the prompt used for routing facts to helper tools.
-
-    Parameters
-    ----------
-    facts
-        A list of extracted facts from the earnings call.
-    """
-    return f""" You are the RAG-orchestration analyst for an earnings-call workflow.
+_DEFAULT_FACTS_DELEGATION_PROMPT = """
+You are the RAG-orchestration analyst for an earnings-call workflow.
 
 ## Objective
 For **each fact** listed below, decide **which (if any) of the three tools** will
@@ -391,7 +295,7 @@ day after the call**.
      outperformance, underperformance, or parity
 
 ---
-The facts are: {facts}
+The facts are: {{facts}}
 
 Output your answers in the following form:
 
@@ -401,28 +305,32 @@ QueryPastCalls: Fact No <1, 3, 5>
 
 *One fact may appear under multiple tools if multiple comparisons are helpful.*
 
-"""
+""".strip()
 
-peer_discovery_ticker_prompt = """
-You are a financial analyst. Based on the company with ticker {ticker}, list 5 close peer companies that are in the same or closely related industries.
+
+_DEFAULT_PEER_DISCOVERY_TICKER_PROMPT = """
+You are a financial analyst. Based on the company with ticker {{ticker}}, list 5 close peer companies that are in the same or closely related industries.
 
 Only output a Python-style list of tickers, like:
 ["AAPL", "GOOGL", "AMZN", "MSFT", "ORCL"]
-"""
+""".strip()
 
 
-# ============================================================================
-# BASELINE PROMPTS
-# ============================================================================
+_DEFAULT_MEMORY_PROMPT = """
+You have memory on how your previous prediction on the firm faired.
+Your previous research note is given as:
+{{all_notes}},
+The actual return achieved by your previous note was : {{actual_return}}
+""".strip()
 
-def baseline_prompt(transcript) -> str:
-    return f"""
+
+_DEFAULT_BASELINE_PROMPT = """
 You are a portfolio manager and you are reading an earnings call transcript.
 decide whether the stock price is likely to **increase ("Up") or decrease ("Down")**
 one trading day after the earnings call, and assign a **Direction score** from 0 to 10.
 
 ---
-{transcript}
+{{transcript}}
 
 Instructions:
 1. Assign a confidence score (0 = strong conviction of decline, 5 = neutral, 10 = strong conviction of rise).
@@ -431,5 +339,197 @@ Respond in **exactly** this format:
 
 <Couple of sentences of Explanation>
 Direction : <0-10>
-
 """.strip()
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+
+def get_default_system_prompts() -> Dict[str, str]:
+    """
+    回傳六個 system prompt 的「原始 default 版本」。
+    key 為 EDITABLE_PROMPT_KEYS 中使用的 key。
+    """
+    return {
+        "MAIN_AGENT_SYSTEM_MESSAGE": _DEFAULT_MAIN_AGENT_SYSTEM_MESSAGE,
+        "EXTRACTION_SYSTEM_MESSAGE": _DEFAULT_EXTRACTION_SYSTEM_MESSAGE,
+        "DELEGATION_SYSTEM_MESSAGE": _DEFAULT_DELEGATION_SYSTEM_MESSAGE,
+        "COMPARATIVE_SYSTEM_MESSAGE": _DEFAULT_COMPARATIVE_SYSTEM_MESSAGE,
+        "HISTORICAL_EARNINGS_SYSTEM_MESSAGE": _DEFAULT_HISTORICAL_EARNINGS_SYSTEM_MESSAGE,
+        "FINANCIALS_SYSTEM_MESSAGE": _DEFAULT_FINANCIALS_SYSTEM_MESSAGE,
+    }
+
+
+def get_all_default_prompts() -> Dict[str, str]:
+    """
+    回傳全部 15 個 prompt 的「原始 default 版本」。
+    包含 6 個 system messages + 9 個 prompt templates。
+    """
+    return {
+        # System Messages (6)
+        "MAIN_AGENT_SYSTEM_MESSAGE": _DEFAULT_MAIN_AGENT_SYSTEM_MESSAGE,
+        "EXTRACTION_SYSTEM_MESSAGE": _DEFAULT_EXTRACTION_SYSTEM_MESSAGE,
+        "DELEGATION_SYSTEM_MESSAGE": _DEFAULT_DELEGATION_SYSTEM_MESSAGE,
+        "COMPARATIVE_SYSTEM_MESSAGE": _DEFAULT_COMPARATIVE_SYSTEM_MESSAGE,
+        "HISTORICAL_EARNINGS_SYSTEM_MESSAGE": _DEFAULT_HISTORICAL_EARNINGS_SYSTEM_MESSAGE,
+        "FINANCIALS_SYSTEM_MESSAGE": _DEFAULT_FINANCIALS_SYSTEM_MESSAGE,
+        # Prompt Templates (9)
+        "COMPARATIVE_AGENT_PROMPT": _DEFAULT_COMPARATIVE_AGENT_PROMPT,
+        "HISTORICAL_EARNINGS_AGENT_PROMPT": _DEFAULT_HISTORICAL_EARNINGS_AGENT_PROMPT,
+        "FINANCIALS_STATEMENT_AGENT_PROMPT": _DEFAULT_FINANCIALS_STATEMENT_AGENT_PROMPT,
+        "MAIN_AGENT_PROMPT": _DEFAULT_MAIN_AGENT_PROMPT,
+        "FACTS_EXTRACTION_PROMPT": _DEFAULT_FACTS_EXTRACTION_PROMPT,
+        "FACTS_DELEGATION_PROMPT": _DEFAULT_FACTS_DELEGATION_PROMPT,
+        "PEER_DISCOVERY_TICKER_PROMPT": _DEFAULT_PEER_DISCOVERY_TICKER_PROMPT,
+        "MEMORY_PROMPT": _DEFAULT_MEMORY_PROMPT,
+        "BASELINE_PROMPT": _DEFAULT_BASELINE_PROMPT,
+    }
+
+
+# ============================================================================
+# PROMPT FUNCTIONS
+# ============================================================================
+
+
+def comparative_agent_prompt(
+    facts: List[Dict[str, Any]],
+    related_facts: List[Dict[str, Any]],
+    self_ticker: str | None = None,
+) -> str:
+    """Return the prompt for the *Comparative Peers* analysis agent."""
+    template = get_prompt_override("COMPARATIVE_AGENT_PROMPT", _DEFAULT_COMPARATIVE_AGENT_PROMPT)
+    ticker_section = f"\n\nThe ticker of the firm being analyzed is: {self_ticker}" if self_ticker else ""
+
+    return template.replace(
+        "{{ticker_section}}", ticker_section
+    ).replace(
+        "{{facts}}", json.dumps(facts, indent=2)
+    ).replace(
+        "{{related_facts}}", json.dumps(related_facts, indent=2)
+    )
+
+
+def historical_earnings_agent_prompt(
+    fact: Dict[str, Any],
+    related_facts: List[Dict[str, Any]],
+    current_quarter: str | None = None,
+) -> str:
+    """Return the prompt for the *Historical Earnings* analysis agent."""
+    template = get_prompt_override("HISTORICAL_EARNINGS_AGENT_PROMPT", _DEFAULT_HISTORICAL_EARNINGS_AGENT_PROMPT)
+    quarter_label = current_quarter if current_quarter else "the current quarter"
+
+    return template.replace(
+        "{{fact}}", json.dumps(fact, indent=2)
+    ).replace(
+        "{{related_facts}}", json.dumps(related_facts, indent=2)
+    ).replace(
+        "{{quarter_label}}", quarter_label
+    )
+
+
+def financials_statement_agent_prompt(
+    fact: Dict[str, Any],
+    similar_facts: list,
+    quarter: str | None = None,
+) -> str:
+    """Prompt template for analysing the current fact in the context of most similar past facts."""
+    template = get_prompt_override("FINANCIALS_STATEMENT_AGENT_PROMPT", _DEFAULT_FINANCIALS_STATEMENT_AGENT_PROMPT)
+    quarter_label = quarter if quarter else "the current quarter"
+
+    return template.replace(
+        "{{quarter_label}}", quarter_label
+    ).replace(
+        "{{fact}}", json.dumps(fact, indent=2)
+    ).replace(
+        "{{similar_facts}}", json.dumps(similar_facts, indent=2)
+    )
+
+
+def memory(all_notes, actual_return):
+    """Combine prior note and realized move for calibration."""
+    template = get_prompt_override("MEMORY_PROMPT", _DEFAULT_MEMORY_PROMPT)
+
+    return template.replace(
+        "{{all_notes}}", str(all_notes)
+    ).replace(
+        "{{actual_return}}", str(actual_return)
+    )
+
+
+def main_agent_prompt(
+    notes,
+    all_notes=None,
+    original_transcript: str | None = None,
+    memory_txt: str | None = None,
+    financial_statements_facts: str | None = None,
+    qoq_section: str | None = None,
+) -> str:
+    """Prompt for the *Main* decision-making agent."""
+    template = get_prompt_override("MAIN_AGENT_PROMPT", _DEFAULT_MAIN_AGENT_PROMPT)
+
+    transcript_section = f"\nORIGINAL EARNINGS CALL TRANSCRIPT:\n---\n{original_transcript}\n---\n" if original_transcript else ""
+
+    financial_statements_section = ""
+    if financial_statements_facts:
+        financial_statements_section = f"""
+---
+Financial Statements Facts (YoY):
+{financial_statements_facts}
+---
+"""
+
+    qoq_section_str = ""
+    if qoq_section:
+        qoq_section_str = f"\n---\nQuarter-on-Quarter Changes:\n{qoq_section}\n---\n"
+
+    memory_section = ""
+    if memory_txt:
+        memory_section = f"\n{memory_txt}\n"
+
+    return template.replace(
+        "{{transcript_section}}", transcript_section
+    ).replace(
+        "{{original_transcript}}", original_transcript or ""
+    ).replace(
+        "{{financial_statements_section}}", financial_statements_section
+    ).replace(
+        "{{qoq_section_str}}", qoq_section_str
+    ).replace(
+        "{{notes_financials}}", notes.get('financials', '') if notes else ''
+    ).replace(
+        "{{notes_past}}", notes.get('past', '') if notes else ''
+    ).replace(
+        "{{notes_peers}}", notes.get('peers', '') if notes else ''
+    ).replace(
+        "{{memory_section}}", memory_section
+    )
+
+
+def facts_extraction_prompt(transcript_chunk: str) -> str:
+    """Build the LLM prompt that asks for five specific data classes."""
+    template = get_prompt_override("FACTS_EXTRACTION_PROMPT", _DEFAULT_FACTS_EXTRACTION_PROMPT)
+
+    return template.replace("{{transcript_chunk}}", transcript_chunk)
+
+
+def facts_delegation_prompt(facts: List) -> str:
+    """Return the prompt used for routing facts to helper tools."""
+    template = get_prompt_override("FACTS_DELEGATION_PROMPT", _DEFAULT_FACTS_DELEGATION_PROMPT)
+
+    return template.replace("{{facts}}", str(facts))
+
+
+def peer_discovery_ticker_prompt(ticker: str) -> str:
+    """Return the prompt for peer discovery."""
+    template = get_prompt_override("PEER_DISCOVERY_TICKER_PROMPT", _DEFAULT_PEER_DISCOVERY_TICKER_PROMPT)
+
+    return template.replace("{{ticker}}", ticker)
+
+
+def baseline_prompt(transcript) -> str:
+    """Return the baseline prompt for simple analysis."""
+    template = get_prompt_override("BASELINE_PROMPT", _DEFAULT_BASELINE_PROMPT)
+
+    return template.replace("{{transcript}}", str(transcript))

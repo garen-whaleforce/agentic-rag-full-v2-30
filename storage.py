@@ -489,3 +489,125 @@ def set_prompt(key: str, content: str) -> None:
                 """,
                 (key, content, now_iso),
             )
+
+
+def delete_prompt(key: str) -> None:
+    """Delete a prompt override, effectively resetting to default."""
+    init_db()
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        if DB_KIND == "postgres":
+            cur.execute("DELETE FROM prompt_configs WHERE key = %s", (key,))
+        else:
+            cur.execute("DELETE FROM prompt_configs WHERE key = ?", (key,))
+
+
+# ============================================================================
+# PROMPT PROFILES
+# ============================================================================
+
+
+def _ensure_profile_table(cursor) -> None:
+    """Ensure prompt_profiles table exists for storing profile sets."""
+    if DB_KIND == "postgres":
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS prompt_profiles (
+                name TEXT PRIMARY KEY,
+                prompts_json TEXT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS prompt_profiles (
+                name TEXT PRIMARY KEY,
+                prompts_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def list_prompt_profiles() -> List[Dict[str, Any]]:
+    """Return all profile names with updated_at timestamps."""
+    init_db()
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        _ensure_profile_table(cur)
+        cur.execute("SELECT name, updated_at FROM prompt_profiles ORDER BY name")
+        rows = _fetchall(cur)
+    return [{"name": row["name"], "updated_at": row["updated_at"]} for row in rows]
+
+
+def get_prompt_profile(name: str) -> Optional[Dict[str, Any]]:
+    """Return a profile by name, including its prompts dict."""
+    init_db()
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        _ensure_profile_table(cur)
+        if DB_KIND == "postgres":
+            cur.execute(
+                "SELECT name, prompts_json, updated_at FROM prompt_profiles WHERE name = %s",
+                (name,),
+            )
+        else:
+            cur.execute(
+                "SELECT name, prompts_json, updated_at FROM prompt_profiles WHERE name = ?",
+                (name,),
+            )
+        row = _fetchone(cur)
+    if not row:
+        return None
+    try:
+        prompts = json.loads(row["prompts_json"])
+    except Exception:
+        prompts = {}
+    return {
+        "name": row["name"],
+        "prompts": prompts,
+        "updated_at": row["updated_at"],
+    }
+
+
+def set_prompt_profile(name: str, prompts: Dict[str, str]) -> None:
+    """Upsert a prompt profile."""
+    init_db()
+    now_iso = datetime.utcnow().isoformat()
+    prompts_json = json.dumps(prompts or {})
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        _ensure_profile_table(cur)
+        if DB_KIND == "postgres":
+            cur.execute(
+                """
+                INSERT INTO prompt_profiles(name, prompts_json, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (name) DO UPDATE
+                SET prompts_json = EXCLUDED.prompts_json,
+                    updated_at = NOW()
+                """,
+                (name, prompts_json),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT OR REPLACE INTO prompt_profiles(name, prompts_json, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                (name, prompts_json, now_iso),
+            )
+
+
+def delete_prompt_profile(name: str) -> None:
+    """Delete a prompt profile."""
+    init_db()
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        _ensure_profile_table(cur)
+        if DB_KIND == "postgres":
+            cur.execute("DELETE FROM prompt_profiles WHERE name = %s", (name,))
+        else:
+            cur.execute("DELETE FROM prompt_profiles WHERE name = ?", (name,))

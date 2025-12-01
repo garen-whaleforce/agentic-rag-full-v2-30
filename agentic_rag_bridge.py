@@ -98,13 +98,15 @@ def _credentials_path(repo_path: Path) -> Path:
 
 
 def _load_sector_map(repo_path: Path) -> Dict[str, str]:
-    """Best-effort load GICS sector map if存在."""
+    """Best-effort load and merge all GICS sector maps (NYSE + NASDAQ + MAEC)."""
     candidates = [
         repo_path / "gics_sector_map_nyse.csv",
         repo_path / "gics_sector_map_nasdaq.csv",
+        repo_path / "gics_sector_map_maec.csv",
     ]
     import pandas as pd  # Lazy import; included in requirements
 
+    merged: Dict[str, str] = {}
     for csv_path in candidates:
         if csv_path.exists():
             try:
@@ -113,14 +115,12 @@ def _load_sector_map(repo_path: Path) -> Dict[str, str]:
                 ticker_col = cols.get("ticker") or cols.get("symbol")
                 sector_col = cols.get("sector") or cols.get("gics_sector")
                 if ticker_col and sector_col:
-                    return {
-                        str(t).upper(): str(s)
-                        for t, s in zip(df[ticker_col], df[sector_col])
-                        if pd.notna(t) and pd.notna(s)
-                    }
+                    for t, s in zip(df[ticker_col], df[sector_col]):
+                        if pd.notna(t) and pd.notna(s):
+                            merged[str(t).upper()] = str(s)
             except Exception:
                 continue
-    return {}
+    return merged
 
 
 def _summarize_financials(financials: Optional[Dict[str, Any]]) -> str:

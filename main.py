@@ -19,7 +19,14 @@ from pydantic import BaseModel, Field
 from uuid import uuid4
 
 from analysis_engine import analyze_earnings, analyze_earnings_async
-from prompt_service import save_prompt_override
+from prompt_service import (
+    save_prompt_override,
+    reset_prompt_override,
+    list_prompt_profiles,
+    get_prompt_profile,
+    save_prompt_profile,
+    delete_prompt_profile,
+)
 from EarningsCallAgenticRag.agents.prompts.prompts import (
     get_main_agent_system_message,
     get_extraction_system_message,
@@ -27,7 +34,10 @@ from EarningsCallAgenticRag.agents.prompts.prompts import (
     get_comparative_system_message,
     get_historical_earnings_system_message,
     get_financials_system_message,
+    get_default_system_prompts,
+    get_all_default_prompts,
 )
+from prompt_service import get_prompt_override
 from fmp_client import (
     close_fmp_client,
     close_fmp_async_client,
@@ -48,28 +58,64 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Route B: Real-time Earnings Call Analysis")
 TRANSLATE_MODEL_DEFAULT = os.getenv("TRANSLATE_MODEL", "gpt-5-mini")
+
+# All 15 editable prompts: 6 System Messages + 9 Prompt Templates
 EDITABLE_PROMPT_KEYS = [
+    # System Messages (6)
     "MAIN_AGENT_SYSTEM_MESSAGE",
     "EXTRACTION_SYSTEM_MESSAGE",
     "DELEGATION_SYSTEM_MESSAGE",
     "COMPARATIVE_SYSTEM_MESSAGE",
     "HISTORICAL_EARNINGS_SYSTEM_MESSAGE",
     "FINANCIALS_SYSTEM_MESSAGE",
+    # Prompt Templates (9)
+    "COMPARATIVE_AGENT_PROMPT",
+    "HISTORICAL_EARNINGS_AGENT_PROMPT",
+    "FINANCIALS_STATEMENT_AGENT_PROMPT",
+    "MAIN_AGENT_PROMPT",
+    "FACTS_EXTRACTION_PROMPT",
+    "FACTS_DELEGATION_PROMPT",
+    "PEER_DISCOVERY_TICKER_PROMPT",
+    "MEMORY_PROMPT",
+    "BASELINE_PROMPT",
 ]
 
 
 def _get_current_prompts_dict():
     """
-    回傳目前生效中的六個 system prompts（default + DB override）。
+    回傳目前生效中的 15 個 prompts（default + DB override）。
+    包含 6 個 system messages + 9 個 prompt templates。
     """
-    return {
-        "MAIN_AGENT_SYSTEM_MESSAGE": get_main_agent_system_message(),
-        "EXTRACTION_SYSTEM_MESSAGE": get_extraction_system_message(),
-        "DELEGATION_SYSTEM_MESSAGE": get_delegation_system_message(),
-        "COMPARATIVE_SYSTEM_MESSAGE": get_comparative_system_message(),
-        "HISTORICAL_EARNINGS_SYSTEM_MESSAGE": get_historical_earnings_system_message(),
-        "FINANCIALS_SYSTEM_MESSAGE": get_financials_system_message(),
-    }
+    defaults = get_all_default_prompts()
+    result = {}
+    for key in EDITABLE_PROMPT_KEYS:
+        result[key] = get_prompt_override(key, defaults.get(key, ""))
+    return result
+
+
+def _detect_active_profile_name() -> str:
+    """
+    判斷目前生效的 prompts 是 default / 某個 profile / custom。
+    回傳值:
+      - "default": 完全等於 hard-coded 預設值
+      - "<profile_name>": 完全等於某個已存 profile
+      - "custom": 與 default 及所有 profile 都不同
+    """
+    current = _get_current_prompts_dict()
+    defaults = get_all_default_prompts()
+
+    # Check if current matches default
+    if current == defaults:
+        return "default"
+
+    # Check if current matches any saved profile
+    profiles = list_prompt_profiles()
+    for p in profiles:
+        profile_data = get_prompt_profile(p["name"])
+        if profile_data and profile_data.get("prompts") == current:
+            return p["name"]
+
+    return "custom"
 
 
 def _build_async_openai_client() -> Tuple[Union[AsyncOpenAI, AsyncAzureOpenAI, None], dict]:
@@ -213,6 +259,19 @@ class PromptItem(BaseModel):
 class PromptUpdate(BaseModel):
     key: str
     content: str
+
+
+class PromptStatus(BaseModel):
+    active_profile: str
+
+
+class ProfileCreate(BaseModel):
+    name: str
+    prompts: Optional[Dict[str, str]] = None
+
+
+class ProfileApply(BaseModel):
+    name: str
 
 
 # In-memory batch job registry for background batch processing
@@ -550,6 +609,80 @@ async def api_update_prompt(payload: PromptUpdate):
         raise HTTPException(status_code=400, detail="Unknown prompt key")
 
     save_prompt_override(payload.key, payload.content)
+    return {"status": "ok"}
+
+
+@app.get("/api/prompts/status", response_model=PromptStatus)
+async def api_prompt_status():
+    """回傳目前生效的 prompt 組合名稱（default / custom / profile_name）。"""
+    return PromptStatus(active_profile=_detect_active_profile_name())
+
+
+@app.delete("/api/prompts/{key}")
+async def api_delete_prompt(key: str):
+    """刪除某個 prompt 的 override，恢復為 default。"""
+    if key not in EDITABLE_PROMPT_KEYS:
+        raise HTTPException(status_code=400, detail="Unknown prompt key")
+    reset_prompt_override(key)
+    return {"status": "ok"}
+
+
+@app.get("/api/prompt_profiles")
+async def api_list_profiles():
+    """列出所有已存 profile（name + updated_at）。"""
+    return list_prompt_profiles()
+
+
+@app.post("/api/prompt_profiles")
+async def api_create_profile(payload: ProfileCreate):
+    """
+    建立或更新一個 profile。
+    如果沒傳 prompts，就以「目前生效的 prompts」存檔。
+    """
+    prompts = payload.prompts or _get_current_prompts_dict()
+    save_prompt_profile(payload.name, prompts)
+    return {"status": "ok", "name": payload.name}
+
+
+@app.get("/api/prompt_profiles/{name}")
+async def api_get_profile(name: str):
+    """取得指定 profile 的詳細內容（含 prompts dict）。"""
+    data = get_prompt_profile(name)
+    if not data:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return data
+
+
+@app.post("/api/prompt_profiles/apply")
+async def api_apply_profile(payload: ProfileApply):
+    """
+    套用某個 profile 到目前設定。
+    若 name == "default"，清除所有 override。
+    """
+    if payload.name == "default":
+        # Reset all prompts to default
+        for key in EDITABLE_PROMPT_KEYS:
+            reset_prompt_override(key)
+        return {"status": "ok", "applied": "default"}
+
+    data = get_prompt_profile(payload.name)
+    if not data:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    prompts = data.get("prompts", {})
+    defaults = get_default_system_prompts()
+    for key in EDITABLE_PROMPT_KEYS:
+        if key in prompts and prompts[key] != defaults.get(key):
+            save_prompt_override(key, prompts[key])
+        else:
+            reset_prompt_override(key)
+    return {"status": "ok", "applied": payload.name}
+
+
+@app.delete("/api/prompt_profiles/{name}")
+async def api_delete_profile(name: str):
+    """刪除指定 profile。"""
+    delete_prompt_profile(name)
     return {"status": "ok"}
 
 
