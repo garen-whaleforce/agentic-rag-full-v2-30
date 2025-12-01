@@ -26,21 +26,7 @@ __all__ = [
 
 # === Main Agent System Message ===
 _DEFAULT_MAIN_AGENT_SYSTEM_MESSAGE = """
-You are a long-only equity portfolio manager.
-
-Your ONLY goal is to forecast the **one-trading-day price reaction** after an
-earnings call (next trading day close vs pre-call close), not long-term
-fundamentals.
-
-Constraints:
-- Always give a single **Direction score (0–10)**.
-- Base your view ONLY on: helper notes (financials / past calls / peers),
-  optional memory calibration, and the latest call transcript.
-- Do NOT talk about your own process or about being an AI.
-- Keep language professional and concise.
-
-Output must always end with a single line:
-  Direction: <integer 0–10>
+You are a seasoned portfolio manager.
 """.strip()
 
 
@@ -50,10 +36,7 @@ def get_main_agent_system_message() -> str:
 
 # === Extraction System Message ===
 _DEFAULT_EXTRACTION_SYSTEM_MESSAGE = """
-You are a senior equity-research analyst extracting structured facts from
-earnings calls.
-
-You only output structured facts; you never output a summary or opinion.
+You are a precise extraction bot.
 """.strip()
 
 
@@ -63,10 +46,7 @@ def get_extraction_system_message() -> str:
 
 # === Delegation System Message ===
 _DEFAULT_DELEGATION_SYSTEM_MESSAGE = """
-You are the orchestration analyst deciding which helper tools should enrich
-each fact for short-term **one-day price reaction** prediction.
-
-You only output tool selections for each fact; you never explain yourself.
+Route each fact.
 """.strip()
 
 
@@ -75,10 +55,7 @@ def get_delegation_system_message() -> str:
 
 
 # === Comparative System Message ===
-_DEFAULT_COMPARATIVE_SYSTEM_MESSAGE = (
-    "You are an equity analyst specialising in cross-company comparisons "
-    "within the same industry."
-)
+_DEFAULT_COMPARATIVE_SYSTEM_MESSAGE = "You are a financial forecasting assistant."
 
 
 def get_comparative_system_message() -> str:
@@ -86,10 +63,7 @@ def get_comparative_system_message() -> str:
 
 
 # === Historical Earnings System Message ===
-_DEFAULT_HISTORICAL_EARNINGS_SYSTEM_MESSAGE = (
-    "You are an equity analyst specialising in comparing management commentary "
-    "across quarters."
-)
+_DEFAULT_HISTORICAL_EARNINGS_SYSTEM_MESSAGE = "You are a financial forecasting assistant."
 
 
 def get_historical_earnings_system_message() -> str:
@@ -97,10 +71,7 @@ def get_historical_earnings_system_message() -> str:
 
 
 # === Financials System Message ===
-_DEFAULT_FINANCIALS_SYSTEM_MESSAGE = (
-    "You are an equity analyst specialising in interpreting changes in "
-    "financial statements over time."
-)
+_DEFAULT_FINANCIALS_SYSTEM_MESSAGE = "You are a financial forecasting assistant."
 
 
 def get_financials_system_message() -> str:
@@ -132,10 +103,10 @@ def comparative_agent_prompt(
 You are analyzing a company's earnings call transcript alongside statements made by similar firms.{ticker_section}
 
 The batch of facts about the firm is:
-{json.dumps(facts, indent=2, ensure_ascii=False)}
+{json.dumps(facts, indent=2)}
 
 Comparable firms discuss the facts in the following way:
-{json.dumps(related_facts, indent=2, ensure_ascii=False)}
+{json.dumps(related_facts, indent=2)}
 
 Your task is:
 - Describe how the firm's reasoning about their own performance differs from other firms, for each fact if possible.
@@ -174,16 +145,16 @@ def historical_earnings_agent_prompt(
 You are analyzing a company's earnings call transcript alongside facts from its own past earnings calls.
 
 The list of current facts are:
-{json.dumps(fact, indent=2, ensure_ascii=False)}
+{json.dumps(fact, indent=2)}
 
 It is reported in the quarter {quarter_label}
 
 Here is a JSON list of related facts from the firm's previous earnings calls:
-{json.dumps(related_facts, indent=2, ensure_ascii=False)}
+{json.dumps(related_facts, indent=2)}
 
 TASK
 ────
-1. **Validate past guidance**
+1. **Validate past guidanced**
    ▸ For every forward-looking statement made in previous quarters, state whether the firm met, beat, or missed that guidance in `{quarter_label}`.
    ▸ Reference concrete numbers (e.g., "Revenue growth was 12 % vs. the 10 % guided in 2024-Q3").
    ▸ Omit if you cannot provide a direct comparison
@@ -196,10 +167,6 @@ TASK
    ▸ Quote or paraphrase the relevant historical statement, then cite the matching current-quarter metric.
    ▸ Format each evidence line as
      `• <metric>: <historical statement> → <current result>`.
-
-4. **Highlight unexpected outcomes.**
-   ▸ Identify any areas where management *did not* address an important historical comparison, or where the result diverged sharply from trend/expectations.
-   ▸ Explain why the omission or divergence matters to investors.
 
 Keep your analysis concise. Prioritize more recent quarters. Do not discuss areas not mentioned.
 
@@ -223,10 +190,10 @@ You are reviewing the company's {quarter_label} earnings-call transcript and com
 
 ────────────────────────────────────────
 Current fact (from {quarter_label}):
-{json.dumps(fact, indent=2, ensure_ascii=False)}
+{json.dumps(fact, indent=2)}
 
 Most similar past facts (from previous quarters):
-{json.dumps(similar_facts, indent=2, ensure_ascii=False)}
+{json.dumps(similar_facts, indent=2)}
 ────────────────────────────────────────
 
 Your tasks:
@@ -238,9 +205,6 @@ Your tasks:
 
 2. **Supported outcomes**
    • Identify areas where management explicitly addressed historical comparisons and the numbers confirm their comments.
-
-3. **Unexpected outcomes**
-   • Highlight results that management did **not** address or that diverge sharply from historical trends, and explain why this matters to investors.
 
 Focus on improvements on bottom line performance (eg. net income)
 
@@ -268,11 +232,11 @@ def memory(all_notes, actual_return):
         Realized next-day return after the prior call (string).
     """
     return f"""
-You have memory on how your previous prediction on the firm faired.
-Your previous research note is given as:
-{all_notes},
-The actual return achieved by your previous note was : {actual_return}
-""".strip()
+    You have memory on how your previous prediction on the firm faired.
+    Your previous research note is given as:
+    {all_notes},
+    The actual return achieved by your previous note was : {actual_return}
+    """
 
 
 def main_agent_prompt(
@@ -284,7 +248,7 @@ def main_agent_prompt(
     qoq_section: str | None = None,
 ) -> str:
     """Prompt for the *Main* decision-making agent, requesting just an
-    Up/Down call plus a confidence score (0-10)."""
+    Up/Down call plus a confidence score (0-100)."""
     transcript_section = f"\nORIGINAL EARNINGS CALL TRANSCRIPT:\n---\n{original_transcript}\n---\n" if original_transcript else ""
 
     financial_statements_section = ""
@@ -314,18 +278,20 @@ The original transcript is:
 {original_transcript}
 
 {financial_statements_section}
-{qoq_section_str}
++{qoq_section_str}
 ---
 Financials-vs-History note:
-{notes.get('financials', '')}
+{notes['financials']}
 
 Historical-Calls note:
-{notes.get('past', '')}
+{notes['past']}
 
 Peer-Comparison note:
-{notes.get('peers', '')}
+{notes['peers']}
+
 
 {memory_section}
+
 ---
 
 Instructions:
@@ -390,7 +356,7 @@ Example output:
 - **Value:** "3 million dollars"
 - **Reason:** Quarter was up on a daily organic basis, driven primarily by core non-pandemic product sales.
 
-""".strip()
+"""
 
 
 def facts_delegation_prompt(facts: List) -> str:
@@ -401,7 +367,7 @@ def facts_delegation_prompt(facts: List) -> str:
     facts
         A list of extracted facts from the earnings call.
     """
-    return f"""You are the RAG-orchestration analyst for an earnings-call workflow.
+    return f""" You are the RAG-orchestration analyst for an earnings-call workflow.
 
 ## Objective
 For **each fact** listed below, decide **which (if any) of the three tools** will
@@ -435,8 +401,7 @@ QueryPastCalls: Fact No <1, 3, 5>
 
 *One fact may appear under multiple tools if multiple comparisons are helpful.*
 
-""".strip()
-
+"""
 
 peer_discovery_ticker_prompt = """
 You are a financial analyst. Based on the company with ticker {ticker}, list 5 close peer companies that are in the same or closely related industries.
