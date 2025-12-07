@@ -11,6 +11,17 @@ from storage import get_fmp_cache, set_fmp_cache
 
 load_dotenv()
 
+# AWS FMP Database - primary data source (falls back to API if unavailable)
+try:
+    import aws_fmp_db
+    AWS_FMP_ENABLED = aws_fmp_db.check_connection()
+    if AWS_FMP_ENABLED:
+        logging.getLogger(__name__).info("AWS FMP DB enabled as primary data source")
+except ImportError:
+    AWS_FMP_ENABLED = False
+except Exception:
+    AWS_FMP_ENABLED = False
+
 FMP_API_KEY = os.getenv("FMP_API_KEY")
 FMP_BASE_URL = os.getenv("FMP_BASE_URL", "https://financialmodelingprep.com/stable").rstrip("/")
 FMP_TIMEOUT = float(os.getenv("FMP_TIMEOUT_SECONDS", "8.0"))
@@ -190,9 +201,20 @@ async def _get_company_profile_async(symbol: str) -> Dict:
 def get_company_profile(symbol: str) -> Dict:
     """
     Fetch basic company profile (name, exchange, sector) for enrichment.
+    Checks AWS FMP DB first, then falls back to FMP API.
     """
     if not symbol:
         return {}
+
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
+        try:
+            aws_profile = aws_fmp_db.get_company_profile(symbol)
+            if aws_profile and aws_profile.get("company") and aws_profile.get("sector"):
+                return aws_profile
+        except Exception as e:
+            logger.debug("AWS FMP DB profile lookup failed: %s", e)
+
     _require_api_key()
     cache_ttl = int(os.getenv("PROFILE_CACHE_MIN", "1440"))
     cache_key = f"fmp:profile:{symbol.upper()}"
@@ -225,6 +247,28 @@ def get_company_profile(symbol: str) -> Dict:
         out["market_cap"] = None
     set_fmp_cache(cache_key, out)
     return out
+
+
+def get_peers_by_sector(sector: str, exclude_symbol: str = None, limit: int = 10) -> List[str]:
+    """
+    Get peer company symbols in the same sector from AWS FMP DB.
+
+    Args:
+        sector: GICS sector name (e.g., 'Technology')
+        exclude_symbol: Symbol to exclude from results
+        limit: Maximum number of peers to return
+
+    Returns: List of ticker symbols.
+    """
+    if not sector:
+        return []
+
+    if AWS_FMP_ENABLED:
+        try:
+            return aws_fmp_db.get_peers_by_sector(sector, exclude_symbol, limit)
+        except Exception as e:
+            logger.debug("AWS FMP DB peers lookup failed: %s", e)
+    return []
 
 
 def get_market_cap(symbol: str) -> Optional[float]:
@@ -401,13 +445,27 @@ def get_earnings_calendar_for_range(
 def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict]:
     """
     Fetch daily historical prices between start and end (inclusive).
+    Checks AWS FMP DB first, then falls back to FMP API.
     """
+    start_str = start.strftime("%Y-%m-%d")
+    end_str = end.strftime("%Y-%m-%d")
+
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
+        try:
+            aws_prices = aws_fmp_db.get_historical_prices(symbol, start_str, end_str)
+            if aws_prices:
+                logger.debug("Historical prices for %s found in AWS FMP DB (%d days)", symbol, len(aws_prices))
+                return aws_prices
+        except Exception as e:
+            logger.debug("AWS FMP DB historical prices lookup failed: %s", e)
+
     _require_api_key()
     use_server_window = True
     params = {
         "symbol": symbol,
-        "from": start.strftime("%Y-%m-%d"),
-        "to": end.strftime("%Y-%m-%d"),
+        "from": start_str,
+        "to": end_str,
         "apikey": FMP_API_KEY,
     }
     client = _get_client()
@@ -634,10 +692,21 @@ class NoTranscriptError(ValueError):
 def get_transcript(symbol: str, year: int, quarter: int, max_retries: int = 3) -> Dict:
     """
     Call FMP Earnings Transcript API with retry logic.
+    Checks AWS FMP DB first, then falls back to FMP API.
 
     Retries up to max_retries times if transcript content is empty.
     Raises NoTranscriptError immediately if no transcript found (no 600s wait).
     """
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
+        try:
+            aws_transcript = aws_fmp_db.get_transcript(symbol, year, quarter)
+            if aws_transcript and aws_transcript.get("content") and aws_transcript["content"].strip():
+                logger.debug("Transcript for %s FY%s Q%s found in AWS FMP DB", symbol, year, quarter)
+                return aws_transcript
+        except Exception as e:
+            logger.debug("AWS FMP DB transcript lookup failed: %s", e)
+
     _require_api_key()
     cache_ttl = int(os.getenv("TRANSCRIPT_CACHE_MIN", "10080"))  # default 7 days
     cache_key = f"fmp:transcript:{symbol.upper()}:{year}:{quarter}"
@@ -790,7 +859,18 @@ async def _get_transcript_async(symbol: str, year: int, quarter: int, max_retrie
 def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
     """
     Fetch recent quarterly financial statements.
+    Checks AWS FMP DB first, then falls back to FMP API.
     """
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
+        try:
+            aws_fin = aws_fmp_db.get_quarterly_financials(symbol, limit)
+            if aws_fin and (aws_fin.get("income") or aws_fin.get("balance") or aws_fin.get("cashFlow")):
+                logger.debug("Financials for %s found in AWS FMP DB", symbol)
+                return aws_fin
+        except Exception as e:
+            logger.debug("AWS FMP DB financials lookup failed: %s", e)
+
     _require_api_key()
     cache_ttl = int(os.getenv("FIN_CACHE_MIN", "1440"))
     cache_key = f"fmp:financials:{symbol.upper()}:{limit}"

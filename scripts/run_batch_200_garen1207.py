@@ -27,7 +27,7 @@ from analysis_engine import analyze_earnings_async
 from storage import set_prompt, get_prompt_profile
 from fmp_client import get_transcript_dates
 
-CONCURRENCY = 5
+CONCURRENCY = 15
 REPORT_INTERVAL_SECONDS = 600  # 10 minutes
 PROFILE_NAME = "garen1207"
 
