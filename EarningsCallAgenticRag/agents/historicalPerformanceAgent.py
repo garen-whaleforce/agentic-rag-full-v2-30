@@ -3,10 +3,12 @@
 `run()` now accepts a **list of facts** so the model can compare all of them to
 past financial statements in a single prompt.
 • **Added:** Token usage tracking for cost monitoring
+• **Updated:** AWS DB first, Neo4j fallback for historical data
 """
 
 from __future__ import annotations
 import os
+import sys
 from pathlib import Path
 import json
 from typing import Any, Dict, List, Optional
@@ -17,6 +19,11 @@ from neo4j import GraphDatabase
 
 from agents.prompts.prompts import get_financials_system_message, financials_statement_agent_prompt
 from utils.llm import build_chat_client, build_embeddings
+
+# Add parent directory to path for aws_db_client import
+_parent = Path(__file__).resolve().parent.parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
 
 # -------------------------------------------------------------------------
 # Token tracking
@@ -77,6 +84,41 @@ class HistoricalPerformanceAgent:
         )
         self.embedder = build_embeddings(creds)
         self.token_tracker = TokenTracker()
+
+    # ------------------------------------------------------------------
+    # AWS DB historical data lookup (primary source)
+    # ------------------------------------------------------------------
+    def _get_historical_facts_from_aws(
+        self,
+        ticker: str,
+        quarter: str,
+        num_quarters: int = 8
+    ) -> List[Dict[str, Any]]:
+        """Get historical financial facts from AWS DB as primary data source.
+
+        Returns list of fact dicts compatible with Neo4j format.
+        """
+        try:
+            from aws_db_client import get_historical_financials_facts, is_available
+
+            if not is_available():
+                print("[HistoricalPerformanceAgent] AWS DB not available, will use Neo4j")
+                return []
+
+            facts = get_historical_financials_facts(ticker, quarter, num_quarters)
+            if not facts:
+                print(f"[HistoricalPerformanceAgent] No historical data in AWS DB for {ticker}")
+                return []
+
+            print(f"[HistoricalPerformanceAgent] Got {len(facts)} historical facts from AWS DB for {ticker}")
+            return facts
+
+        except ImportError:
+            print("[HistoricalPerformanceAgent] aws_db_client not available")
+            return []
+        except Exception as e:
+            print(f"[HistoricalPerformanceAgent] AWS DB error: {e}")
+            return []
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -203,35 +245,47 @@ class HistoricalPerformanceAgent:
         return quarter
 
     def run(self, facts: List[Dict[str, str]], row, quarter, ticker: Optional[str] = None, top_n: int = 5) -> str:  # Lowered from 50 to 10
-        """Batch: Compare all facts to all top-N similar past facts by embedding, and run the LLM prompt once for the batch."""
+        """Batch: Compare all facts to all top-N similar past facts.
+
+        Data source priority:
+        1. AWS DB (primary) - faster, no embedding cost
+        2. Neo4j vector search (fallback) - if AWS DB has no data
+        """
         facts = list(facts)[:MAX_FACTS_FOR_FINANCIALS]
         if not facts:
             return "No facts provided."
 
         # Reset token tracker for this run
         self.token_tracker = TokenTracker()
+        resolved_ticker = ticker or row.get("ticker")
 
-        all_similar = []
-        for fact in facts:
-            similar_facts = self.get_similar_facts_by_embedding(fact, ticker or row.get("ticker"), quarter, top_n=top_n)
-            # Filter out facts with no value or reason, and only keep those from previous quarters
-            # Explicitly exclude the current quarter
-            filtered_similar = [
-                f for f in similar_facts
-                if f.get("quarter") and (
-                    self._q_sort_key(f.get("quarter")) < self._q_sort_key(quarter) and
-                    f.get("quarter") != quarter  # Explicitly exclude current quarter
-                )
-            ]
-            if not filtered_similar:
-                filtered_similar = []
-            # Attach the metric of the current fact to each similar fact for context
-            for sim in filtered_similar:
-                sim["current_metric"] = fact.get("metric", "")
-                if "embedding" in sim:
-                    del sim["embedding"]
-            all_similar.extend(filtered_similar)
+        # --- Step 1: Try AWS DB first (primary source) ---
+        all_similar = self._get_historical_facts_from_aws(resolved_ticker, quarter, num_quarters=8)
 
+        # --- Step 2: Fallback to Neo4j if AWS DB has no data ---
+        if not all_similar:
+            print(f"[HistoricalPerformanceAgent] Falling back to Neo4j for {resolved_ticker}/{quarter}")
+            for fact in facts:
+                similar_facts = self.get_similar_facts_by_embedding(fact, resolved_ticker, quarter, top_n=top_n)
+                # Filter out facts with no value or reason, and only keep those from previous quarters
+                # Explicitly exclude the current quarter
+                filtered_similar = [
+                    f for f in similar_facts
+                    if f.get("quarter") and (
+                        self._q_sort_key(f.get("quarter")) < self._q_sort_key(quarter) and
+                        f.get("quarter") != quarter  # Explicitly exclude current quarter
+                    )
+                ]
+                if not filtered_similar:
+                    filtered_similar = []
+                # Attach the metric of the current fact to each similar fact for context
+                for sim in filtered_similar:
+                    sim["current_metric"] = fact.get("metric", "")
+                    if "embedding" in sim:
+                        del sim["embedding"]
+                all_similar.extend(filtered_similar)
+
+        print(f"[DEBUG] HistoricalPerformanceAgent.run historical_facts len={len(all_similar)}")
         if not all_similar:
             return None
         all_similar = all_similar[:MAX_FINANCIAL_FACTS]

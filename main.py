@@ -49,6 +49,7 @@ from fmp_client import (
 )
 from agentic_rag_bridge import verify_agentic_repo
 from storage import ensure_db_writable, get_call, init_db, list_calls
+from semantic_backtest_service.api import router as backtest_router
 
 load_dotenv()
 
@@ -709,6 +710,10 @@ async def api_delete_profile(name: str):
     """刪除指定 profile。"""
     delete_prompt_profile(name)
     return {"status": "ok"}
+
+
+# Include backtest router (語義反轉回測系統)
+app.include_router(backtest_router)
 
 
 @app.get("/api/calls")

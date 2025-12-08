@@ -300,11 +300,13 @@ def run_single_call_from_context(
         match = re.search(r"Direction\s*:\s*(\d+)", summary, re.IGNORECASE)
         if match:
             score = int(match.group(1))
-            if score >= 7:
+            # 新的 mapping：Direction >= 6 視為 UP，<= 4 視為 DOWN，只有 5 是 NEUTRAL
+            if score >= 6:
                 return "UP", score / 10
-            if score <= 3:
+            if score <= 4:
                 return "DOWN", score / 10
             return "NEUTRAL", score / 10
+
         lowered = summary.lower()
         if any(k in lowered for k in ["up", "increase", "growth", "record", "beat"]):
             return "UP", 0.6

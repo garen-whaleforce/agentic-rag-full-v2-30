@@ -94,6 +94,36 @@ def build_embeddings(creds: Dict[str, str], model: str = "text-embedding-3-small
     return OpenAIEmbeddings(openai_api_key=api_key, model=model)
 
 
+def build_embedding_client(
+    creds: Dict[str, str],
+    prefer_openai: bool = False,
+) -> Tuple[OpenAI | AzureOpenAI, str]:
+    """
+    Return (client, model_name) for embedding operations.
+    Azure settings win; fallback to public OpenAI key.
+    """
+    if prefer_openai:
+        api_key = creds.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("No OpenAI API key configured.")
+        return OpenAI(api_key=api_key), "text-embedding-3-small"
+
+    azure_key, azure_endpoint, azure_version, _, embedding_dep = _azure_settings(creds)
+    if azure_key and azure_endpoint and embedding_dep:
+        client = AzureOpenAI(
+            api_key=azure_key,
+            azure_endpoint=azure_endpoint,
+            api_version=azure_version,
+        )
+        return client, embedding_dep
+
+    # Fallback to OpenAI direct
+    api_key = creds.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("No OpenAI/Azure API key configured.")
+    return OpenAI(api_key=api_key), "text-embedding-3-small"
+
+
 def load_credentials(path: str | Path) -> Dict[str, str]:
     """Load JSON credentials file."""
     return json.loads(Path(path).read_text())

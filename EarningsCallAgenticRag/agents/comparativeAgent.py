@@ -3,12 +3,14 @@
 This rewrite lets `run()` accept a **list of fact‑dicts** (rather than one) so
 all related facts can be analysed in a single LLM prompt.
 • **Added:** Token usage tracking for cost monitoring
+• **Updated:** AWS DB first, Neo4j fallback for peer data
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
@@ -16,6 +18,11 @@ from neo4j import GraphDatabase
 
 from agents.prompts.prompts import get_comparative_system_message, comparative_agent_prompt
 from utils.llm import build_chat_client, build_embeddings
+
+# Add parent directory to path for aws_db_client import
+_parent = Path(__file__).resolve().parent.parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
 
 # -------------------------------------------------------------------------
 # Token tracking
@@ -58,7 +65,7 @@ class TokenTracker:
         }
 
 class ComparativeAgent:
-    """Compare a batch of facts against peer data stored in Neo4j."""
+    """Compare a batch of facts against peer data stored in Neo4j or AWS DB."""
 
     def __init__(
         self,
@@ -78,6 +85,92 @@ class ComparativeAgent:
         self.embedder = build_embeddings(creds)
         self.token_tracker = TokenTracker()
         self.sector_map = sector_map or {}
+
+    # ------------------------------------------------------------------
+    # AWS DB peer lookup (primary source)
+    # ------------------------------------------------------------------
+    def _get_peer_facts_from_aws(
+        self,
+        ticker: str,
+        quarter: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Get peer facts from AWS DB as primary data source.
+
+        Returns list of dicts compatible with Neo4j search results format:
+        - metric, value, reason, ticker, quarter, score
+        """
+        try:
+            from aws_db_client import get_peer_facts_summary, is_available
+
+            if not is_available():
+                print("[ComparativeAgent] AWS DB not available, will use Neo4j")
+                return []
+
+            peer_data = get_peer_facts_summary(ticker, quarter, limit=limit)
+            if not peer_data:
+                print(f"[ComparativeAgent] No peer data in AWS DB for {ticker}/{quarter}")
+                return []
+
+            # Convert AWS DB format to expected format
+            results = []
+            for peer in peer_data:
+                # Create fact-like entries from financial metrics
+                if peer.get("revenue"):
+                    results.append({
+                        "metric": "Revenue",
+                        "value": f"${peer['revenue']:,.0f}" if peer['revenue'] else "N/A",
+                        "reason": f"{peer['name']} ({peer['symbol']}) sector: {peer.get('sector', 'N/A')}",
+                        "ticker": peer["symbol"],
+                        "quarter": quarter,
+                        "score": 0.9,
+                    })
+                if peer.get("net_income"):
+                    results.append({
+                        "metric": "Net Income",
+                        "value": f"${peer['net_income']:,.0f}" if peer['net_income'] else "N/A",
+                        "reason": f"{peer['name']} ({peer['symbol']})",
+                        "ticker": peer["symbol"],
+                        "quarter": quarter,
+                        "score": 0.85,
+                    })
+                if peer.get("eps"):
+                    results.append({
+                        "metric": "EPS",
+                        "value": f"${peer['eps']:.2f}" if peer['eps'] else "N/A",
+                        "reason": f"{peer['name']} ({peer['symbol']})",
+                        "ticker": peer["symbol"],
+                        "quarter": quarter,
+                        "score": 0.85,
+                    })
+                if peer.get("revenue_growth"):
+                    results.append({
+                        "metric": "Revenue Growth",
+                        "value": f"{peer['revenue_growth']:.1%}" if peer['revenue_growth'] else "N/A",
+                        "reason": f"{peer['name']} ({peer['symbol']})",
+                        "ticker": peer["symbol"],
+                        "quarter": quarter,
+                        "score": 0.8,
+                    })
+                if peer.get("earnings_day_return") is not None:
+                    results.append({
+                        "metric": "Earnings Day Return",
+                        "value": f"{peer['earnings_day_return']:.2f}%",
+                        "reason": f"{peer['name']} post-earnings performance",
+                        "ticker": peer["symbol"],
+                        "quarter": quarter,
+                        "score": 0.75,
+                    })
+
+            print(f"[ComparativeAgent] Got {len(results)} peer facts from AWS DB for {ticker}/{quarter}")
+            return results
+
+        except ImportError:
+            print("[ComparativeAgent] aws_db_client not available")
+            return []
+        except Exception as e:
+            print(f"[ComparativeAgent] AWS DB error: {e}")
+            return []
 
     # ------------------------------------------------------------------
     # Vector search helper
@@ -254,7 +347,12 @@ class ComparativeAgent:
         sector: str | None = None,
         top_k: int = 8,  # Lowered from 50 to 10
     ) -> str:
-        """Analyse a batch of facts; return one consolidated LLM answer."""
+        """Analyse a batch of facts; return one consolidated LLM answer.
+
+        Data source priority:
+        1. AWS DB (primary) - faster, no embedding cost
+        2. Neo4j vector search (fallback) - if AWS DB has no data
+        """
         facts = list(facts)[:MAX_FACTS_FOR_PEERS]
         if not facts:
             return "No facts supplied."
@@ -262,31 +360,36 @@ class ComparativeAgent:
         self.token_tracker = TokenTracker()
         peers_len = len(peers) if peers else 0
 
-        # --- Per-fact similarity search and aggregation ---
-        all_similar = []
-        for fact in facts:
-            query = self._to_query(fact)
-            similar = self._search_similar(
-                query,
-                ticker,
-                top_k=top_k,
-                sector=sector,
-                peers=peers,
-                use_batch_peer_query=bool(peers),
-            )
-            # Optionally, attach the current metric for context
-            for sim in similar:
-                sim["current_metric"] = fact.get("metric", "")
-            all_similar.extend(similar)
+        # --- Step 1: Try AWS DB first (primary source) ---
+        deduped_similar = self._get_peer_facts_from_aws(ticker, quarter, limit=10)
 
-        # Optionally deduplicate similar facts (by metric, value, ticker, quarter)
-        seen = set()
-        deduped_similar = []
-        for sim in all_similar:
-            key = (sim.get("metric"), sim.get("value"), sim.get("ticker"), sim.get("quarter"))
-            if key not in seen:
-                deduped_similar.append(sim)
-                seen.add(key)
+        # --- Step 2: Fallback to Neo4j if AWS DB has no data ---
+        if not deduped_similar:
+            print(f"[ComparativeAgent] Falling back to Neo4j for {ticker}/{quarter}")
+            all_similar = []
+            for fact in facts:
+                query = self._to_query(fact)
+                similar = self._search_similar(
+                    query,
+                    ticker,
+                    top_k=top_k,
+                    sector=sector,
+                    peers=peers,
+                    use_batch_peer_query=bool(peers),
+                )
+                # Optionally, attach the current metric for context
+                for sim in similar:
+                    sim["current_metric"] = fact.get("metric", "")
+                all_similar.extend(similar)
+
+            # Deduplicate similar facts (by metric, value, ticker, quarter)
+            seen = set()
+            deduped_similar = []
+            for sim in all_similar:
+                key = (sim.get("metric"), sim.get("value"), sim.get("ticker"), sim.get("quarter"))
+                if key not in seen:
+                    deduped_similar.append(sim)
+                    seen.add(key)
 
         print(f"[DEBUG] ComparativeAgent.run peers len={peers_len}, related_facts len={len(deduped_similar)}")
         deduped_similar = deduped_similar[:MAX_PEER_FACTS]

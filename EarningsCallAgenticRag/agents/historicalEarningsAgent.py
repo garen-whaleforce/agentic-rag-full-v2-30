@@ -2,6 +2,7 @@
 ====================================================
 Compare current facts with the firm's own historical facts.
 • **Added:** Token usage tracking for cost monitoring
+• **Updated:** AWS DB first, Neo4j fallback for historical data
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -17,6 +19,11 @@ from neo4j import GraphDatabase
 
 from agents.prompts.prompts import get_historical_earnings_system_message, historical_earnings_agent_prompt
 from utils.llm import build_chat_client, build_embeddings
+
+# Add parent directory to path for aws_db_client import
+_parent = Path(__file__).resolve().parent.parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
 
 # -------------------------------------------------------------------------
 # Token tracking
@@ -76,6 +83,41 @@ class HistoricalEarningsAgent:
         )
         self.embedder = build_embeddings(creds)
         self.token_tracker = TokenTracker()
+
+    # ------------------------------------------------------------------
+    # AWS DB historical earnings lookup (primary source)
+    # ------------------------------------------------------------------
+    def _get_historical_earnings_from_aws(
+        self,
+        ticker: str,
+        quarter: str,
+        num_quarters: int = 8
+    ) -> List[Dict[str, Any]]:
+        """Get historical earnings facts from AWS DB as primary data source.
+
+        Returns list of fact dicts compatible with Neo4j format.
+        """
+        try:
+            from aws_db_client import get_historical_earnings_facts, is_available
+
+            if not is_available():
+                print("[HistoricalEarningsAgent] AWS DB not available, will use Neo4j")
+                return []
+
+            facts = get_historical_earnings_facts(ticker, quarter, num_quarters)
+            if not facts:
+                print(f"[HistoricalEarningsAgent] No historical earnings in AWS DB for {ticker}")
+                return []
+
+            print(f"[HistoricalEarningsAgent] Got {len(facts)} historical earnings facts from AWS DB for {ticker}")
+            return facts
+
+        except ImportError:
+            print("[HistoricalEarningsAgent] aws_db_client not available")
+            return []
+        except Exception as e:
+            print(f"[HistoricalEarningsAgent] AWS DB error: {e}")
+            return []
 
     # ------------------------------------------------------------------
     # Neo4j fetch helper (simple filter – same ticker, prior quarters)
@@ -211,7 +253,12 @@ class HistoricalEarningsAgent:
         quarter: str,
         top_k: int = 5,  # Lowered from 50 to 10
     ) -> str:
-        """Batch: For each fact, find similar historical facts, aggregate, and run the LLM prompt once for the batch."""
+        """Batch: For each fact, find similar historical facts.
+
+        Data source priority:
+        1. AWS DB (primary) - faster, no embedding cost
+        2. Neo4j vector search (fallback) - if AWS DB has no data
+        """
         facts = list(facts)[:MAX_FACTS_FOR_PAST]
         if not facts:
             return "❌ No facts supplied."
@@ -219,25 +266,32 @@ class HistoricalEarningsAgent:
         # Reset token tracker for this run
         self.token_tracker = TokenTracker()
 
-        all_similar = []
-        for fact in facts:
-            similar_facts = self.get_similar_facts_by_embedding(fact, ticker, quarter, top_n=top_k)
-            if not similar_facts:
-                continue
-            for sim in similar_facts:
-                sim["current_metric"] = fact.get("metric", "")
-                sim.pop("embedding", None)
-            all_similar.extend(similar_facts)
+        # --- Step 1: Try AWS DB first (primary source) ---
+        deduped_similar = self._get_historical_earnings_from_aws(ticker, quarter, num_quarters=8)
 
-        # Optionally deduplicate similar facts
-        seen = set()
-        deduped_similar = []
-        for sim in all_similar:
-            key = (sim.get("metric"), sim.get("value"), sim.get("ticker"), sim.get("quarter"))
-            if key not in seen:
-                deduped_similar.append(sim)
-                seen.add(key)
+        # --- Step 2: Fallback to Neo4j if AWS DB has no data ---
+        if not deduped_similar:
+            print(f"[HistoricalEarningsAgent] Falling back to Neo4j for {ticker}/{quarter}")
+            all_similar = []
+            for fact in facts:
+                similar_facts = self.get_similar_facts_by_embedding(fact, ticker, quarter, top_n=top_k)
+                if not similar_facts:
+                    continue
+                for sim in similar_facts:
+                    sim["current_metric"] = fact.get("metric", "")
+                    sim.pop("embedding", None)
+                all_similar.extend(similar_facts)
 
+            # Deduplicate similar facts
+            seen = set()
+            deduped_similar = []
+            for sim in all_similar:
+                key = (sim.get("metric"), sim.get("value"), sim.get("ticker"), sim.get("quarter"))
+                if key not in seen:
+                    deduped_similar.append(sim)
+                    seen.add(key)
+
+        print(f"[DEBUG] HistoricalEarningsAgent.run historical_earnings len={len(deduped_similar)}")
         deduped_similar = deduped_similar[:MAX_HISTORICAL_FACTS]
         if not deduped_similar:
             return None
