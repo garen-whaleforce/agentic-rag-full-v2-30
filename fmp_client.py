@@ -9,15 +9,18 @@ import httpx
 from dotenv import load_dotenv
 from storage import get_fmp_cache, set_fmp_cache
 
-# AWS DB client for historical data (optional, falls back to FMP API)
-try:
-    import aws_db_client as aws_db
-    AWS_DB_AVAILABLE = aws_db.is_available()
-except ImportError:
-    aws_db = None
-    AWS_DB_AVAILABLE = False
-
 load_dotenv()
+
+# AWS FMP Database - primary data source (falls back to API if unavailable)
+try:
+    import aws_fmp_db
+    AWS_FMP_ENABLED = aws_fmp_db.check_connection()
+    if AWS_FMP_ENABLED:
+        logging.getLogger(__name__).info("AWS FMP DB enabled as primary data source")
+except ImportError:
+    AWS_FMP_ENABLED = False
+except Exception:
+    AWS_FMP_ENABLED = False
 
 FMP_API_KEY = os.getenv("FMP_API_KEY")
 FMP_BASE_URL = os.getenv("FMP_BASE_URL", "https://financialmodelingprep.com/stable").rstrip("/")
@@ -198,30 +201,20 @@ async def _get_company_profile_async(symbol: str) -> Dict:
 def get_company_profile(symbol: str) -> Dict:
     """
     Fetch basic company profile (name, exchange, sector) for enrichment.
-
-    Priority: AWS DB -> FMP Cache -> FMP API
+    Checks AWS FMP DB first, then falls back to FMP API.
     """
     if not symbol:
         return {}
 
-    # Priority 1: Try AWS DB first
-    if AWS_DB_AVAILABLE and aws_db:
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
         try:
-            aws_info = aws_db.get_company_info(symbol)
-            if aws_info and aws_info.get("name"):
-                logger.debug(f"[AWS DB] Company info found for {symbol}")
-                return {
-                    "company": aws_info.get("name"),
-                    "exchange": None,  # AWS DB doesn't have exchange
-                    "sector": aws_info.get("gics") or aws_info.get("sector"),
-                    "industry": aws_info.get("sub_sector"),
-                    "country": "US",  # S&P 500 are US companies
-                    "source": "aws_db",
-                }
+            aws_profile = aws_fmp_db.get_company_profile(symbol)
+            if aws_profile and aws_profile.get("company") and aws_profile.get("sector"):
+                return aws_profile
         except Exception as e:
-            logger.warning(f"[AWS DB] get_company_info failed for {symbol}: {e}, falling back to FMP")
+            logger.debug("AWS FMP DB profile lookup failed: %s", e)
 
-    # Priority 2: FMP Cache
     _require_api_key()
     cache_ttl = int(os.getenv("PROFILE_CACHE_MIN", "1440"))
     cache_key = f"fmp:profile:{symbol.upper()}"
@@ -231,7 +224,6 @@ def get_company_profile(symbol: str) -> Dict:
         if cached.get("company") and cached.get("sector") and cached.get("exchange") and cached.get("country") is not None:
             return cached
 
-    # Priority 3: FMP API
     client = _get_client()
     # FMP stable profile expects symbol as query param, not path segment
     resp = _get(client, "profile", params={"symbol": symbol, "apikey": FMP_API_KEY})
@@ -255,6 +247,28 @@ def get_company_profile(symbol: str) -> Dict:
         out["market_cap"] = None
     set_fmp_cache(cache_key, out)
     return out
+
+
+def get_peers_by_sector(sector: str, exclude_symbol: str = None, limit: int = 10) -> List[str]:
+    """
+    Get peer company symbols in the same sector from AWS FMP DB.
+
+    Args:
+        sector: GICS sector name (e.g., 'Technology')
+        exclude_symbol: Symbol to exclude from results
+        limit: Maximum number of peers to return
+
+    Returns: List of ticker symbols.
+    """
+    if not sector:
+        return []
+
+    if AWS_FMP_ENABLED:
+        try:
+            return aws_fmp_db.get_peers_by_sector(sector, exclude_symbol, limit)
+        except Exception as e:
+            logger.debug("AWS FMP DB peers lookup failed: %s", e)
+    return []
 
 
 def get_market_cap(symbol: str) -> Optional[float]:
@@ -431,44 +445,27 @@ def get_earnings_calendar_for_range(
 def _historical_prices(symbol: str, start: datetime, end: datetime) -> List[dict]:
     """
     Fetch daily historical prices between start and end (inclusive).
-
-    Priority: AWS DB -> FMP API
+    Checks AWS FMP DB first, then falls back to FMP API.
     """
-    # Priority 1: Try AWS DB first
-    if AWS_DB_AVAILABLE and aws_db:
-        try:
-            aws_prices = aws_db.get_historical_prices(
-                symbol,
-                start_date=start.date() if hasattr(start, 'date') else start,
-                end_date=end.date() if hasattr(end, 'date') else end
-            )
-            if aws_prices:
-                # Convert to FMP format and sort ascending
-                formatted = []
-                for p in aws_prices:
-                    formatted.append({
-                        "date": str(p.get("date")),
-                        "open": p.get("open"),
-                        "high": p.get("high"),
-                        "low": p.get("low"),
-                        "close": p.get("close"),
-                        "adjClose": p.get("adj_close"),
-                        "volume": p.get("volume"),
-                    })
-                # Sort ascending by date
-                formatted.sort(key=lambda x: x.get("date", ""))
-                logger.debug(f"[AWS DB] Historical prices found for {symbol}: {len(formatted)} records")
-                return formatted
-        except Exception as e:
-            logger.warning(f"[AWS DB] get_historical_prices failed for {symbol}: {e}, falling back to FMP")
+    start_str = start.strftime("%Y-%m-%d")
+    end_str = end.strftime("%Y-%m-%d")
 
-    # Priority 2: FMP API
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
+        try:
+            aws_prices = aws_fmp_db.get_historical_prices(symbol, start_str, end_str)
+            if aws_prices:
+                logger.debug("Historical prices for %s found in AWS FMP DB (%d days)", symbol, len(aws_prices))
+                return aws_prices
+        except Exception as e:
+            logger.debug("AWS FMP DB historical prices lookup failed: %s", e)
+
     _require_api_key()
     use_server_window = True
     params = {
         "symbol": symbol,
-        "from": start.strftime("%Y-%m-%d"),
-        "to": end.strftime("%Y-%m-%d"),
+        "from": start_str,
+        "to": end_str,
         "apikey": FMP_API_KEY,
     }
     client = _get_client()
@@ -595,9 +592,8 @@ def search_symbols(query: str) -> List[Dict]:
 
 def get_transcript_dates(symbol: str) -> List[Dict]:
     """
-    Get available transcript dates for a symbol.
-
-    Priority: AWS DB -> FMP API
+    Call FMP Transcripts Dates By Symbol API:
+    GET /stable/earning-call-transcript-dates?symbol={symbol}&apikey=FMP_API_KEY
     """
     def _calendar_from_date(date_str: str) -> Dict[str, Optional[int]]:
         try:
@@ -610,17 +606,6 @@ def get_transcript_dates(symbol: str) -> List[Dict]:
     if not symbol:
         return []
 
-    # Priority 1: Try AWS DB first
-    if AWS_DB_AVAILABLE and aws_db:
-        try:
-            aws_dates = aws_db.get_transcript_dates_aws(symbol)
-            if aws_dates:
-                logger.debug(f"[AWS DB] Transcript dates found for {symbol}: {len(aws_dates)} records")
-                return aws_dates
-        except Exception as e:
-            logger.warning(f"[AWS DB] get_transcript_dates_aws failed for {symbol}: {e}, falling back to FMP")
-
-    # Priority 2: FMP API
     _require_api_key()
     client = _get_client()
     resp = _get(client, "earning-call-transcript-dates", params={"symbol": symbol, "apikey": FMP_API_KEY})
@@ -650,8 +635,6 @@ def get_fiscal_quarter_by_date(symbol: str, target_date: str, tolerance_days: in
     Look up the fiscal year and quarter for a given earnings date.
     Supports fuzzy matching - finds the closest date within tolerance.
 
-    Priority: AWS DB -> FMP API (via get_transcript_dates)
-
     Args:
         symbol: Ticker symbol (e.g., 'LULU')
         target_date: Earnings date in YYYY-MM-DD format (e.g., '2025-09-04')
@@ -661,17 +644,8 @@ def get_fiscal_quarter_by_date(symbol: str, target_date: str, tolerance_days: in
         Dict with 'year', 'quarter', and 'matched_date' if found, None otherwise.
         Example: {'year': 2025, 'quarter': 2, 'matched_date': '2025-09-04'}
     """
-    # Priority 1: Try AWS DB first (direct lookup)
-    if AWS_DB_AVAILABLE and aws_db:
-        try:
-            aws_result = aws_db.get_fiscal_quarter_by_date_aws(symbol, target_date, tolerance_days)
-            if aws_result:
-                logger.debug(f"[AWS DB] Fiscal quarter found for {symbol} {target_date}: FY{aws_result['year']} Q{aws_result['quarter']}")
-                return aws_result
-        except Exception as e:
-            logger.warning(f"[AWS DB] get_fiscal_quarter_by_date_aws failed for {symbol}: {e}, falling back to FMP")
+    from datetime import datetime, timedelta
 
-    # Priority 2: FMP API (via get_transcript_dates)
     transcript_dates = get_transcript_dates(symbol)
     if not transcript_dates:
         return None
@@ -718,30 +692,21 @@ class NoTranscriptError(ValueError):
 def get_transcript(symbol: str, year: int, quarter: int, max_retries: int = 3) -> Dict:
     """
     Call FMP Earnings Transcript API with retry logic.
+    Checks AWS FMP DB first, then falls back to FMP API.
 
-    Priority: AWS DB -> FMP Cache -> FMP API
     Retries up to max_retries times if transcript content is empty.
     Raises NoTranscriptError immediately if no transcript found (no 600s wait).
     """
-    # Priority 1: Try AWS DB first
-    if AWS_DB_AVAILABLE and aws_db:
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
         try:
-            aws_content = aws_db.get_transcript(symbol, year, quarter)
-            if aws_content and aws_content.strip():
-                metadata = aws_db.get_transcript_metadata(symbol, year, quarter) or {}
-                logger.debug(f"[AWS DB] Transcript found for {symbol} FY{year} Q{quarter}")
-                return {
-                    "symbol": symbol,
-                    "year": year,
-                    "quarter": quarter,
-                    "date": str(metadata.get("t_day") or metadata.get("transcript_date_str") or ""),
-                    "content": aws_content,
-                    "source": "aws_db",
-                }
+            aws_transcript = aws_fmp_db.get_transcript(symbol, year, quarter)
+            if aws_transcript and aws_transcript.get("content") and aws_transcript["content"].strip():
+                logger.debug("Transcript for %s FY%s Q%s found in AWS FMP DB", symbol, year, quarter)
+                return aws_transcript
         except Exception as e:
-            logger.warning(f"[AWS DB] get_transcript failed for {symbol}: {e}, falling back to FMP")
+            logger.debug("AWS FMP DB transcript lookup failed: %s", e)
 
-    # Priority 2: FMP Cache
     _require_api_key()
     cache_ttl = int(os.getenv("TRANSCRIPT_CACHE_MIN", "10080"))  # default 7 days
     cache_key = f"fmp:transcript:{symbol.upper()}:{year}:{quarter}"
@@ -819,29 +784,9 @@ async def _get_transcript_async(symbol: str, year: int, quarter: int, max_retrie
     """
     Async transcript fetch with cache and retry logic.
 
-    Priority: AWS DB -> FMP Cache -> FMP API
     Retries up to max_retries times if transcript content is empty.
     Raises NoTranscriptError immediately if no transcript found.
     """
-    # Priority 1: Try AWS DB first (run in thread to avoid blocking)
-    if AWS_DB_AVAILABLE and aws_db:
-        try:
-            aws_content = await asyncio.to_thread(aws_db.get_transcript, symbol, year, quarter)
-            if aws_content and aws_content.strip():
-                metadata = await asyncio.to_thread(aws_db.get_transcript_metadata, symbol, year, quarter) or {}
-                logger.debug(f"[AWS DB] Transcript found for {symbol} FY{year} Q{quarter}")
-                return {
-                    "symbol": symbol,
-                    "year": year,
-                    "quarter": quarter,
-                    "date": str(metadata.get("t_day") or metadata.get("transcript_date_str") or ""),
-                    "content": aws_content,
-                    "source": "aws_db",
-                }
-        except Exception as e:
-            logger.warning(f"[AWS DB] get_transcript_async failed for {symbol}: {e}, falling back to FMP")
-
-    # Priority 2: FMP Cache
     _require_api_key()
     cache_ttl = int(os.getenv("TRANSCRIPT_CACHE_MIN", "10080"))  # default 7 days
     cache_key = f"fmp:transcript:{symbol.upper()}:{year}:{quarter}"
@@ -914,21 +859,18 @@ async def _get_transcript_async(symbol: str, year: int, quarter: int, max_retrie
 def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
     """
     Fetch recent quarterly financial statements.
-
-    Priority: AWS DB -> FMP Cache -> FMP API
+    Checks AWS FMP DB first, then falls back to FMP API.
     """
-    # Priority 1: Try AWS DB first
-    if AWS_DB_AVAILABLE and aws_db:
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
         try:
-            aws_financials = aws_db.get_quarterly_financials(symbol, limit)
-            # Check if we got meaningful data
-            if aws_financials.get("income") or aws_financials.get("balance") or aws_financials.get("cashFlow"):
-                logger.debug(f"[AWS DB] Financials found for {symbol}")
-                return aws_financials
+            aws_fin = aws_fmp_db.get_quarterly_financials(symbol, limit)
+            if aws_fin and (aws_fin.get("income") or aws_fin.get("balance") or aws_fin.get("cashFlow")):
+                logger.debug("Financials for %s found in AWS FMP DB", symbol)
+                return aws_fin
         except Exception as e:
-            logger.warning(f"[AWS DB] get_quarterly_financials failed for {symbol}: {e}, falling back to FMP")
+            logger.debug("AWS FMP DB financials lookup failed: %s", e)
 
-    # Priority 2: FMP Cache
     _require_api_key()
     cache_ttl = int(os.getenv("FIN_CACHE_MIN", "1440"))
     cache_key = f"fmp:financials:{symbol.upper()}:{limit}"
@@ -936,7 +878,6 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
     if cached:
         return cached
 
-    # Priority 3: FMP API
     params = {"symbol": symbol, "period": "quarter", "limit": limit, "apikey": FMP_API_KEY}
     client = _get_client()
     income = _get(client, "income-statement", params=params)
@@ -959,20 +900,7 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Dict:
 async def _get_quarterly_financials_async(symbol: str, limit: int = 4) -> Dict:
     """
     Async financial statements fetch with cache.
-
-    Priority: AWS DB -> FMP Cache -> FMP API
     """
-    # Priority 1: Try AWS DB first
-    if AWS_DB_AVAILABLE and aws_db:
-        try:
-            aws_financials = await asyncio.to_thread(aws_db.get_quarterly_financials, symbol, limit)
-            if aws_financials.get("income") or aws_financials.get("balance") or aws_financials.get("cashFlow"):
-                logger.debug(f"[AWS DB] Financials found for {symbol}")
-                return aws_financials
-        except Exception as e:
-            logger.warning(f"[AWS DB] get_quarterly_financials_async failed for {symbol}: {e}, falling back to FMP")
-
-    # Priority 2: FMP Cache
     _require_api_key()
     cache_ttl = int(os.getenv("FIN_CACHE_MIN", "1440"))
     cache_key = f"fmp:financials:{symbol.upper()}:{limit}"
@@ -980,7 +908,6 @@ async def _get_quarterly_financials_async(symbol: str, limit: int = 4) -> Dict:
     if cached:
         return cached
 
-    # Priority 3: FMP API
     params = {"symbol": symbol, "period": "quarter", "limit": limit, "apikey": FMP_API_KEY}
     client = _get_async_client()
     income, balance, cash_flow = await asyncio.gather(

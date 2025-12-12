@@ -1,0 +1,692 @@
+[
+  {
+    "ticker": "ORCL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "IDXX",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "NRG",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "APP",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "PLTR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DAL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DDOG",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "WST",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "JBHT",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "PODD",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CHRW",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "GNRC",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "STX",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CRL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "TTD",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "EBAY",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "IQV",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "EXPE",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ANET",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "MGM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DHI",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "AXON",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "LW",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DXCM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DG",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "NOW",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CAH",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "NKE",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CVS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "GM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "AKAM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "GEV",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "HAS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ABNB",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "FSLR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "HOOD",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "TTWO",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ISRG",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "EFX",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ULTA",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "IBM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DOW",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "EPAM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ROK",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "GRMN",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "MCHP",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "INTU",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CNC",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "HUM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "LVS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "KVUE",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "F",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "TPR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "RCL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "TEL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "GLW",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "REGN",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "AES",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CAT",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CARR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "HAL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "PHM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CHTR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "FFIV",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DECK",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "JCI",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "META",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "PM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "EXPD",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "HSIC",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DIS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "XYL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "MPWR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "WYNN",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "BEN",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ALLE",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CEG",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "INCY",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "WDC",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "KEYS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "PWR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "KR",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "FISV",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ALGN",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "SNPS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "IT",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "SWKS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "BAX",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "UNH",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "FTNT",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "VRTX",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "XYZ",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "LULU",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ARE",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "SRE",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "HII",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "SMCI",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CMG",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "BDX",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "LKQ",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "DASH",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "CI",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "STZ",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "COIN",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "EME",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "EL",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "SJM",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ON",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "NTAP",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "NCLH",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "VTRS",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "ZBH",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "COO",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "GDDY",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  },
+  {
+    "ticker": "LLY",
+    "status": "NO_QUARTERS",
+    "error": "No available quarters found",
+    "elapsed": 0
+  }
+]
