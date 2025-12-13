@@ -29,7 +29,7 @@ from fmp_client import get_transcript_dates
 
 CONCURRENCY = 15
 REPORT_INTERVAL_SECONDS = 600  # 10 minutes
-PROFILE_NAME = "garen1207"
+PROFILE_NAME = None  # Use default prompts
 
 # Top 100 Gainers from PDF (2025-01-01 to 2025-12-02)
 TOP_GAINERS = [
@@ -342,8 +342,9 @@ def extract_short_term_tag(note_text: str) -> str:
 def print_summary_report(results: List[Dict], elapsed_seconds: float, is_final: bool = False):
     """Print a summary report in table format."""
     report_type = "FINAL SUMMARY" if is_final else "10-MIN PROGRESS REPORT"
+    profile_str = PROFILE_NAME if PROFILE_NAME else "default"
     print(f"\n{'='*140}", flush=True)
-    print(f"{report_type} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Profile: {PROFILE_NAME}", flush=True)
+    print(f"{report_type} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Profile: {profile_str}", flush=True)
     print(f"Elapsed: {elapsed_seconds/60:.1f} minutes", flush=True)
     print(f"{'='*140}", flush=True)
 
@@ -529,17 +530,21 @@ def save_results_csv(results: List[Dict], output_file: Path):
 async def main():
     global start_time, last_report_time, results_list
 
+    profile_str = PROFILE_NAME if PROFILE_NAME else "default"
     print("=" * 140, flush=True)
-    print(f"BATCH TEST - 200 TICKERS using {PROFILE_NAME}", flush=True)
+    print(f"BATCH TEST - 200 TICKERS using {profile_str} prompts", flush=True)
     print(f"Concurrency: {CONCURRENCY}", flush=True)
     print(f"Report interval: {REPORT_INTERVAL_SECONDS // 60} minutes", flush=True)
     print(f"Cache: DISABLED (skip_cache=True)", flush=True)
     print(f"Started: {datetime.now().isoformat()}", flush=True)
     print("=" * 140, flush=True)
 
-    if not apply_profile(PROFILE_NAME):
-        print(f"Failed to apply profile {PROFILE_NAME}, exiting.", flush=True)
-        return []
+    if PROFILE_NAME:
+        if not apply_profile(PROFILE_NAME):
+            print(f"Failed to apply profile {PROFILE_NAME}, exiting.", flush=True)
+            return []
+    else:
+        print("Using default prompts (no profile applied)", flush=True)
 
     test_list = get_test_list()
     total = len(test_list)

@@ -4,59 +4,92 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import datetime, timedelta, timezone
+import threading
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-DB_PATH = Path(os.getenv("ANALYSIS_DB_PATH", "data/analysis_results.db"))
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-PG_DSN = os.getenv("POSTGRES_DSN")
-DB_KIND = "postgres" if PG_DSN else "sqlite"
 logger = logging.getLogger(__name__)
 
 
+from decimal import Decimal
+
+
+class DateAwareEncoder(json.JSONEncoder):
+    """JSON encoder that handles date, datetime, and Decimal objects."""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+
+def _get_db_config():
+    """Lazy initialization of DB config to allow dotenv to load first."""
+    pg_dsn = os.getenv("POSTGRES_DSN")
+    if pg_dsn:
+        return "postgres", pg_dsn, None
+    db_path = Path(os.getenv("ANALYSIS_DB_PATH", "data/analysis_results.db"))
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return "sqlite", None, db_path
+
+
+def _db_kind():
+    """Return current db kind (postgres or sqlite)."""
+    return _get_db_config()[0]
+
+# Thread-safe initialization
+_init_lock = threading.Lock()
+_db_initialized = False
+
+
 def _get_conn():
-    if DB_KIND == "postgres":
-        conn = psycopg2.connect(PG_DSN, cursor_factory=RealDictCursor)
+    db_kind, pg_dsn, db_path = _get_db_config()
+    if db_kind == "postgres":
+        conn = psycopg2.connect(pg_dsn, cursor_factory=RealDictCursor)
         conn.autocommit = True
         return conn
-    conn = sqlite3.connect(DB_PATH)
+    # Enable WAL mode and busy timeout for better concurrent access
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 
 def _prepare_sql(sql: str) -> str:
-    if DB_KIND == "postgres":
+    if _db_kind() == "postgres":
         return sql.replace("?", "%s")
     return sql
 
 
 def _fetchall(cursor):
     rows = cursor.fetchall()
-    if DB_KIND == "postgres":
+    if _db_kind() == "postgres":
         return rows
     return [dict(r) for r in rows]
 
 
 def _fetchone(cursor):
     row = cursor.fetchone()
-    if DB_KIND == "postgres":
+    if _db_kind() == "postgres":
         return row
     return dict(row) if row else None
 
 
 def _created_column_def() -> str:
-    if DB_KIND == "postgres":
+    if _db_kind() == "postgres":
         return "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
     return "TEXT DEFAULT (datetime('now'))"
 
 
 def _ensure_prompts_table(cursor):
     """Ensure prompt_configs table exists for prompt overrides."""
-    if DB_KIND == "postgres":
+    if _db_kind() == "postgres":
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS prompt_configs (
@@ -100,69 +133,79 @@ def _to_utc(dt_value: Any) -> Optional[datetime]:
 
 
 def init_db() -> None:
-    created_col = _created_column_def()
-    correct_type = "BOOLEAN" if DB_KIND == "postgres" else "INTEGER"
-    with _get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS call_results (
-                job_id TEXT PRIMARY KEY,
-                symbol TEXT,
-                company TEXT,
-                fiscal_year INTEGER,
-                fiscal_quarter INTEGER,
-                call_date TEXT,
-                sector TEXT,
-                exchange TEXT,
-                post_return REAL,
-                prediction TEXT,
-                confidence REAL,
-                correct {correct_type},
-                agent_result_json TEXT,
-                token_usage_json TEXT,
-                agent_notes TEXT,
-                created_at {created_col}
+    global _db_initialized
+    # Fast path: skip if already initialized
+    if _db_initialized:
+        return
+    with _init_lock:
+        # Double-check after acquiring lock
+        if _db_initialized:
+            return
+        created_col = _created_column_def()
+        correct_type = "BOOLEAN" if _db_kind() == "postgres" else "INTEGER"
+        with _get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS call_results (
+                    job_id TEXT PRIMARY KEY,
+                    symbol TEXT,
+                    company TEXT,
+                    fiscal_year INTEGER,
+                    fiscal_quarter INTEGER,
+                    call_date TEXT,
+                    sector TEXT,
+                    exchange TEXT,
+                    post_return REAL,
+                    prediction TEXT,
+                    confidence REAL,
+                    correct {correct_type},
+                    agent_result_json TEXT,
+                    token_usage_json TEXT,
+                    agent_notes TEXT,
+                    created_at {created_col}
+                )
+                """
             )
-            """
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_call_date ON call_results(call_date)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_symbol ON call_results(symbol)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_prediction ON call_results(prediction)")
-        cur.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS call_cache (
-                symbol TEXT NOT NULL,
-                fiscal_year INTEGER NOT NULL,
-                fiscal_quarter INTEGER NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at {created_col},
-                PRIMARY KEY (symbol, fiscal_year, fiscal_quarter)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_call_date ON call_results(call_date)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_symbol ON call_results(symbol)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_prediction ON call_results(prediction)")
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS call_cache (
+                    symbol TEXT NOT NULL,
+                    fiscal_year INTEGER NOT NULL,
+                    fiscal_quarter INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at {created_col},
+                    PRIMARY KEY (symbol, fiscal_year, fiscal_quarter)
+                )
+                """
             )
-            """
-        )
-        cur.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS fmp_cache (
-                cache_key TEXT PRIMARY KEY,
-                payload_json TEXT NOT NULL,
-                created_at {created_col}
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS fmp_cache (
+                    cache_key TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    created_at {created_col}
+                )
+                """
             )
-            """
-        )
-        _ensure_prompts_table(cur)
+            _ensure_prompts_table(cur)
+        _db_initialized = True
 
 
 def ensure_db_writable() -> None:
     """
     Ensure the DB directory exists and is writable; raise if not.
     """
-    if DB_KIND == "postgres":
+    if _db_kind() == "postgres":
         # Managed externally by Postgres.
         return
     try:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        DB_PATH.touch(exist_ok=True)
+        _, _, db_path = _get_db_config()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        db_path.touch(exist_ok=True)
     except Exception as exc:  # noqa: BLE001
         logger.error("DB path not writable: %s", exc)
         raise
@@ -188,7 +231,7 @@ def record_analysis(
     init_db()
     with _get_conn() as conn:
         cur = conn.cursor()
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute(
                 """
                 INSERT INTO call_results (
@@ -366,7 +409,7 @@ def set_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int, paylo
     init_db()
     with _get_conn() as conn:
         cur = conn.cursor()
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute(
                 """
                 INSERT INTO call_cache (symbol, fiscal_year, fiscal_quarter, payload_json)
@@ -374,7 +417,7 @@ def set_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int, paylo
                 ON CONFLICT (symbol, fiscal_year, fiscal_quarter)
                 DO UPDATE SET payload_json = EXCLUDED.payload_json, created_at = CURRENT_TIMESTAMP
                 """,
-                (symbol.upper(), fiscal_year, fiscal_quarter, json.dumps(payload or {})),
+                (symbol.upper(), fiscal_year, fiscal_quarter, json.dumps(payload or {}, cls=DateAwareEncoder)),
             )
         else:
             cur.execute(
@@ -382,7 +425,7 @@ def set_cached_payload(symbol: str, fiscal_year: int, fiscal_quarter: int, paylo
                 INSERT OR REPLACE INTO call_cache (symbol, fiscal_year, fiscal_quarter, payload_json)
                 VALUES (?, ?, ?, ?)
                 """,
-                (symbol.upper(), fiscal_year, fiscal_quarter, json.dumps(payload or {})),
+                (symbol.upper(), fiscal_year, fiscal_quarter, json.dumps(payload or {}, cls=DateAwareEncoder)),
             )
 
 
@@ -421,7 +464,7 @@ def set_fmp_cache(cache_key: str, payload: Dict[str, Any]) -> None:
     init_db()
     with _get_conn() as conn:
         cur = conn.cursor()
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute(
                 """
                 INSERT INTO fmp_cache (cache_key, payload_json)
@@ -456,7 +499,7 @@ def get_prompt(key: str) -> Optional[str]:
     init_db()
     with _get_conn() as conn:
         cur = conn.cursor()
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute("SELECT content FROM prompt_configs WHERE key = %s", (key,))
         else:
             cur.execute("SELECT content FROM prompt_configs WHERE key = ?", (key,))
@@ -470,7 +513,7 @@ def set_prompt(key: str, content: str) -> None:
     now_iso = datetime.utcnow().isoformat()
     with _get_conn() as conn:
         cur = conn.cursor()
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute(
                 """
                 INSERT INTO prompt_configs(key, content, updated_at)
@@ -496,7 +539,7 @@ def delete_prompt(key: str) -> None:
     init_db()
     with _get_conn() as conn:
         cur = conn.cursor()
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute("DELETE FROM prompt_configs WHERE key = %s", (key,))
         else:
             cur.execute("DELETE FROM prompt_configs WHERE key = ?", (key,))
@@ -509,7 +552,7 @@ def delete_prompt(key: str) -> None:
 
 def _ensure_profile_table(cursor) -> None:
     """Ensure prompt_profiles table exists for storing profile sets."""
-    if DB_KIND == "postgres":
+    if _db_kind() == "postgres":
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS prompt_profiles (
@@ -548,7 +591,7 @@ def get_prompt_profile(name: str) -> Optional[Dict[str, Any]]:
     with _get_conn() as conn:
         cur = conn.cursor()
         _ensure_profile_table(cur)
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute(
                 "SELECT name, prompts_json, updated_at FROM prompt_profiles WHERE name = %s",
                 (name,),
@@ -580,7 +623,7 @@ def set_prompt_profile(name: str, prompts: Dict[str, str]) -> None:
     with _get_conn() as conn:
         cur = conn.cursor()
         _ensure_profile_table(cur)
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute(
                 """
                 INSERT INTO prompt_profiles(name, prompts_json, updated_at)
@@ -607,7 +650,7 @@ def delete_prompt_profile(name: str) -> None:
     with _get_conn() as conn:
         cur = conn.cursor()
         _ensure_profile_table(cur)
-        if DB_KIND == "postgres":
+        if _db_kind() == "postgres":
             cur.execute("DELETE FROM prompt_profiles WHERE name = %s", (name,))
         else:
             cur.execute("DELETE FROM prompt_profiles WHERE name = ?", (name,))

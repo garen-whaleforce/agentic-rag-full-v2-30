@@ -173,6 +173,16 @@ async def _get_company_profile_async(symbol: str) -> Dict:
     """
     if not symbol:
         return {}
+
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
+        try:
+            aws_profile = await asyncio.to_thread(aws_fmp_db.get_company_profile, symbol)
+            if aws_profile and aws_profile.get("company") and aws_profile.get("sector"):
+                return aws_profile
+        except Exception as e:
+            logger.debug("AWS FMP DB async profile lookup failed: %s", e)
+
     _require_api_key()
     cache_ttl = int(os.getenv("PROFILE_CACHE_MIN", "1440"))
     cache_key = f"fmp:profile:{symbol.upper()}"
@@ -787,6 +797,16 @@ async def _get_transcript_async(symbol: str, year: int, quarter: int, max_retrie
     Retries up to max_retries times if transcript content is empty.
     Raises NoTranscriptError immediately if no transcript found.
     """
+    # Try AWS FMP DB first (sync call in thread to not block event loop)
+    if AWS_FMP_ENABLED:
+        try:
+            aws_transcript = await asyncio.to_thread(aws_fmp_db.get_transcript, symbol, year, quarter)
+            if aws_transcript and aws_transcript.get("content") and aws_transcript["content"].strip():
+                logger.debug("Async transcript for %s FY%s Q%s found in AWS FMP DB", symbol, year, quarter)
+                return aws_transcript
+        except Exception as e:
+            logger.debug("AWS FMP DB async transcript lookup failed: %s", e)
+
     _require_api_key()
     cache_ttl = int(os.getenv("TRANSCRIPT_CACHE_MIN", "10080"))  # default 7 days
     cache_key = f"fmp:transcript:{symbol.upper()}:{year}:{quarter}"
@@ -901,6 +921,16 @@ async def _get_quarterly_financials_async(symbol: str, limit: int = 4) -> Dict:
     """
     Async financial statements fetch with cache.
     """
+    # Try AWS FMP DB first
+    if AWS_FMP_ENABLED:
+        try:
+            aws_fin = await asyncio.to_thread(aws_fmp_db.get_quarterly_financials, symbol, limit)
+            if aws_fin and (aws_fin.get("income") or aws_fin.get("balance") or aws_fin.get("cashFlow")):
+                logger.debug("Async financials for %s found in AWS FMP DB", symbol)
+                return aws_fin
+        except Exception as e:
+            logger.debug("AWS FMP DB async financials lookup failed: %s", e)
+
     _require_api_key()
     cache_ttl = int(os.getenv("FIN_CACHE_MIN", "1440"))
     cache_key = f"fmp:financials:{symbol.upper()}:{limit}"

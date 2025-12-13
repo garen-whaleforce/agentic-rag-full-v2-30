@@ -1,0 +1,23 @@
+symbol,year,quarter,category,predicted,confidence,t30_change,hit_result,note
+SMCI,2023,4,GAINER,DOWN,1,134.62,MISS,Extracted from partial log
+MRNA,2020,3,GAINER,DOWN,2,120.16,MISS,Extracted from partial log
+EQT,2019,4,GAINER,DOWN,1,101.12,MISS,Extracted from partial log
+SMCI,2023,1,GAINER,DOWN,0,82.01,MISS,Extracted from partial log
+PLTR,2020,3,GAINER,DOWN,1,75.79,MISS,Extracted from partial log
+APA,2020,3,GAINER,DOWN,1,66.59,MISS,Extracted from partial log
+COIN,2023,3,GAINER,DOWN,1,60.64,MISS,Extracted from partial log
+FANG,2020,3,GAINER,DOWN,0,58.99,MISS,Extracted from partial log
+COIN,2024,3,GAINER,DOWN,0,56.6,MISS,Extracted from partial log
+DVN,2020,3,GAINER,DOWN,1,56.39,MISS,Extracted from partial log
+HOOD,2024,3,GAINER,DOWN,1,54.98,MISS,Extracted from partial log
+APP,2021,1,GAINER,DOWN,0,53.52,MISS,Extracted from partial log
+XYZ,2023,3,GAINER,DOWN,1,51.63,MISS,Extracted from partial log
+HAL,2020,1,GAINER,DOWN,1,51.05,MISS,Extracted from partial log
+DRI,2019,4,GAINER,DOWN,0,50.56,MISS,Extracted from partial log
+
+SUMMARY
+Processed,~89 stocks
+Hit Rate,~77.6%
+Avg Direction Score,0.60
+Score Distribution,100% in 0-3 range (DOWN)
+Issue,Anti-bullish-bias too aggressive

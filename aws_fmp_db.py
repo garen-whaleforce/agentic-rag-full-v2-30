@@ -358,3 +358,214 @@ def get_companies_count() -> int:
             return row["cnt"] if row else 0
         except Exception:
             return 0
+
+
+# =============================================================================
+# Helper Agent Functions - For HistoricalPerformance, HistoricalEarnings, Comparative
+# =============================================================================
+
+def get_historical_financials(symbol: str, before_date: str, limit: int = 4) -> Dict:
+    """
+    Get historical financial statements before a given date.
+    Used by HistoricalPerformanceAgent.
+
+    Returns: Dict with income, balance, cashFlow arrays.
+    """
+    if not symbol:
+        return {"income": [], "balance": [], "cashFlow": []}
+
+    with get_cursor() as cur:
+        if cur is None:
+            return {"income": [], "balance": [], "cashFlow": []}
+        try:
+            # Income statements before date
+            cur.execute("""
+                SELECT date, fiscal_year, period, revenue, gross_profit, operating_income,
+                       net_income, ebitda, eps, eps_diluted
+                FROM income_statements
+                WHERE UPPER(symbol) = %s AND date < %s
+                ORDER BY date DESC
+                LIMIT %s
+            """, (symbol.upper(), before_date, limit))
+            income = [dict(row) for row in cur.fetchall()]
+
+            # Balance sheets before date
+            cur.execute("""
+                SELECT date, fiscal_year, period, total_assets, total_liabilities,
+                       total_stockholders_equity, cash_and_cash_equivalents, total_debt
+                FROM balance_sheets
+                WHERE UPPER(symbol) = %s AND date < %s
+                ORDER BY date DESC
+                LIMIT %s
+            """, (symbol.upper(), before_date, limit))
+            balance = [dict(row) for row in cur.fetchall()]
+
+            # Cash flow statements before date
+            cur.execute("""
+                SELECT date, fiscal_year, period, operating_cash_flow, free_cash_flow,
+                       capital_expenditure, net_income
+                FROM cash_flow_statements
+                WHERE UPPER(symbol) = %s AND date < %s
+                ORDER BY date DESC
+                LIMIT %s
+            """, (symbol.upper(), before_date, limit))
+            cash_flow = [dict(row) for row in cur.fetchall()]
+
+            return {"income": income, "balance": balance, "cashFlow": cash_flow}
+        except Exception as e:
+            logger.debug("get_historical_financials error: %s", e)
+    return {"income": [], "balance": [], "cashFlow": []}
+
+
+def get_historical_transcripts(symbol: str, before_year: int, before_quarter: int, limit: int = 4) -> List[Dict]:
+    """
+    Get historical earnings transcripts before a given quarter.
+    Used by HistoricalEarningsAgent.
+
+    Returns: List of dicts with year, quarter, date, content.
+    """
+    if not symbol:
+        return []
+
+    with get_cursor() as cur:
+        if cur is None:
+            return []
+        try:
+            cur.execute("""
+                SELECT tc.year, tc.quarter, et.transcript_date, tc.content
+                FROM transcript_content tc
+                JOIN earnings_transcripts et ON tc.transcript_id = et.id
+                WHERE UPPER(tc.symbol) = %s
+                  AND (tc.year < %s OR (tc.year = %s AND tc.quarter < %s))
+                ORDER BY tc.year DESC, tc.quarter DESC
+                LIMIT %s
+            """, (symbol.upper(), before_year, before_year, before_quarter, limit))
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    "year": row["year"],
+                    "quarter": row["quarter"],
+                    "date": str(row["transcript_date"]) if row.get("transcript_date") else None,
+                    "content": row["content"],
+                })
+            return results
+        except Exception as e:
+            logger.debug("get_historical_transcripts error: %s", e)
+    return []
+
+
+def get_peer_financials(sector: str, exclude_symbol: str, date: str, limit: int = 5) -> List[Dict]:
+    """
+    Get financial data for peer companies in the same sector.
+    Used by ComparativeAgent.
+
+    Returns: List of dicts with symbol, name, and latest financials.
+    """
+    if not sector:
+        return []
+
+    with get_cursor() as cur:
+        if cur is None:
+            return []
+        try:
+            # Get peer symbols
+            cur.execute("""
+                SELECT symbol, name FROM companies
+                WHERE sector = %s AND UPPER(symbol) != %s
+                LIMIT %s
+            """, (sector, exclude_symbol.upper(), limit))
+            peers = [dict(row) for row in cur.fetchall()]
+
+            results = []
+            for peer in peers:
+                peer_symbol = peer["symbol"]
+                # Get latest income statement
+                cur.execute("""
+                    SELECT date, revenue, net_income, eps, gross_profit, operating_income
+                    FROM income_statements
+                    WHERE UPPER(symbol) = %s AND date <= %s
+                    ORDER BY date DESC
+                    LIMIT 1
+                """, (peer_symbol.upper(), date))
+                income_row = cur.fetchone()
+
+                results.append({
+                    "symbol": peer_symbol,
+                    "name": peer["name"],
+                    "financials": dict(income_row) if income_row else None,
+                })
+            return results
+        except Exception as e:
+            logger.debug("get_peer_financials error: %s", e)
+    return []
+
+
+def get_earnings_surprise(symbol: str, year: int, quarter: int) -> Optional[Dict]:
+    """
+    Get EPS surprise data for a specific earnings call.
+
+    Returns: Dict with eps_actual, eps_estimated, eps_surprise or None.
+    """
+    if not symbol:
+        return None
+
+    with get_cursor() as cur:
+        if cur is None:
+            return None
+        try:
+            # Get transcript date first
+            cur.execute("""
+                SELECT transcript_date FROM earnings_transcripts
+                WHERE UPPER(symbol) = %s AND year = %s AND quarter = %s
+            """, (symbol.upper(), year, quarter))
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            transcript_date = row["transcript_date"]
+
+            # Get earnings surprise closest to transcript date
+            cur.execute("""
+                SELECT date, eps_actual, eps_estimated, eps_surprise
+                FROM earnings_surprises
+                WHERE UPPER(symbol) = %s
+                  AND date BETWEEN %s::date - interval '7 days' AND %s::date + interval '7 days'
+                ORDER BY ABS(date - %s::date)
+                LIMIT 1
+            """, (symbol.upper(), transcript_date, transcript_date, transcript_date))
+            surprise_row = cur.fetchone()
+            if surprise_row:
+                return {
+                    "date": str(surprise_row["date"]),
+                    "eps_actual": float(surprise_row["eps_actual"]) if surprise_row.get("eps_actual") else None,
+                    "eps_estimated": float(surprise_row["eps_estimated"]) if surprise_row.get("eps_estimated") else None,
+                    "eps_surprise": float(surprise_row["eps_surprise"]) if surprise_row.get("eps_surprise") else None,
+                }
+        except Exception as e:
+            logger.debug("get_earnings_surprise error: %s", e)
+    return None
+
+
+def get_market_timing(symbol: str, year: int, quarter: int) -> Optional[str]:
+    """
+    Get BMO/AMC market timing for an earnings call.
+
+    Returns: 'BMO', 'AMC', or None.
+    """
+    if not symbol:
+        return None
+
+    with get_cursor() as cur:
+        if cur is None:
+            return None
+        try:
+            cur.execute("""
+                SELECT market_timing FROM earnings_transcripts
+                WHERE UPPER(symbol) = %s AND year = %s AND quarter = %s
+            """, (symbol.upper(), year, quarter))
+            row = cur.fetchone()
+            if row and row.get("market_timing"):
+                return row["market_timing"]
+        except Exception as e:
+            logger.debug("get_market_timing error: %s", e)
+    return None

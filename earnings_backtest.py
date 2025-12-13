@@ -28,9 +28,33 @@ class EarningsBacktest(TypedDict, total=False):
     change_pct: Optional[float] # 漲跌百分比 (e.g., -0.67 means -0.67%)
 
 
+def get_session_from_aws_db(symbol: str, year: int, quarter: int) -> EarningsSession:
+    """
+    從 AWS DB 的 market_timing 欄位取得 BMO/AMC。
+
+    AWS DB values: 'before_market', 'after_market', 'undetermine'
+
+    Returns: 'BMO', 'AMC', or 'UNKNOWN'
+    """
+    try:
+        from aws_fmp_db import get_market_timing
+        timing = get_market_timing(symbol, year, quarter)
+        if timing:
+            timing_lower = timing.lower()
+            if "before" in timing_lower:
+                return "BMO"
+            elif "after" in timing_lower:
+                return "AMC"
+    except Exception:
+        pass
+    return "UNKNOWN"
+
+
 def infer_earnings_session_from_transcript(transcript: str) -> EarningsSession:
     """
     從 transcript 內容推斷 earnings call 是盤前 (BMO) 還是盤後 (AMC)。
+
+    注意：此函數已被 get_session_from_aws_db() 取代，保留作為 fallback。
 
     規則：
     1. 把 transcript 轉成小寫，掃描全文
@@ -159,6 +183,8 @@ def compute_earnings_backtest(
     symbol: str,
     earnings_date: str,
     transcript: str,
+    year: Optional[int] = None,
+    quarter: Optional[int] = None,
 ) -> Optional[EarningsBacktest]:
     """
     計算 earnings call 的回測資訊。
@@ -167,6 +193,8 @@ def compute_earnings_backtest(
         symbol: 股票代號
         earnings_date: Earnings call 日期 (YYYY-MM-DD)
         transcript: Earnings call 全文
+        year: 財報年度 (用於查詢 AWS DB market_timing)
+        quarter: 財報季度 (用於查詢 AWS DB market_timing)
 
     Returns:
         EarningsBacktest 結構，包含：
@@ -187,8 +215,14 @@ def compute_earnings_backtest(
         logger.warning(f"Invalid earnings_date format: {earnings_date}")
         return None
 
-    # 1. 推斷 session
-    session = infer_earnings_session_from_transcript(transcript or "")
+    # 1. 優先從 AWS DB 取得 session，若失敗則 fallback 到 transcript 解析
+    session: EarningsSession = "UNKNOWN"
+    if year and quarter:
+        session = get_session_from_aws_db(symbol, year, quarter)
+
+    # Fallback to transcript parsing if AWS DB returns UNKNOWN
+    if session == "UNKNOWN" and transcript:
+        session = infer_earnings_session_from_transcript(transcript)
 
     # 2. 根據 session 決定比較日期
     if session == "BMO":

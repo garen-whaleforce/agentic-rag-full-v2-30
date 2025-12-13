@@ -45,32 +45,36 @@ def run_agentic_rag(
         else:
             context["ingest_warning"] = msg
 
-    # First, backfill recent historical quarters so helper agents have past facts.
-    history_quarters = 4
-    try:
-        history_quarters = int(os.getenv("INGEST_HISTORY_QUARTERS", "4"))
-    except Exception:
+    # Skip Neo4j ingest when using AWS DB agents (no vector search needed)
+    skip_neo4j_ingest = os.getenv("USE_AWS_DB_AGENTS", "false").lower() == "true"
+
+    if not skip_neo4j_ingest:
+        # First, backfill recent historical quarters so helper agents have past facts.
         history_quarters = 4
+        try:
+            history_quarters = int(os.getenv("INGEST_HISTORY_QUARTERS", "4"))
+        except Exception:
+            history_quarters = 4
 
-    try:
-        _retry(lambda: ingest_recent_history_into_neo4j(context, max_quarters=history_quarters))
-    except Neo4jIngestError as exc:
-        logger.warning("Historical ingest failed: %s", exc)
-        _add_ingest_warning(f"Historical ingest failed: {exc}")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Historical ingest failed: %s", exc)
-        _add_ingest_warning(f"Historical ingest failed: {exc}")
+        try:
+            _retry(lambda: ingest_recent_history_into_neo4j(context, max_quarters=history_quarters))
+        except Neo4jIngestError as exc:
+            logger.warning("Historical ingest failed: %s", exc)
+            _add_ingest_warning(f"Historical ingest failed: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Historical ingest failed: %s", exc)
+            _add_ingest_warning(f"Historical ingest failed: {exc}")
 
-    # On-the-fly Neo4j ingestion so helper agents have facts to use.
-    try:
-        _retry(lambda: ingest_context_into_neo4j(context))
-    except Neo4jIngestError as exc:
-        # Keep analyzing even if ingestion failed; surface a hint in metadata.
-        context.setdefault("ingest_warning", str(exc))
-        logger.warning("Neo4j ingestion failed: %s", exc)
-    except Exception as exc:  # noqa: BLE001
-        context.setdefault("ingest_warning", f"Neo4j ingestion failed: {exc}")
-        logger.warning("Neo4j ingestion failed: %s", exc)
+        # On-the-fly Neo4j ingestion so helper agents have facts to use.
+        try:
+            _retry(lambda: ingest_context_into_neo4j(context))
+        except Neo4jIngestError as exc:
+            # Keep analyzing even if ingestion failed; surface a hint in metadata.
+            context.setdefault("ingest_warning", str(exc))
+            logger.warning("Neo4j ingestion failed: %s", exc)
+        except Exception as exc:  # noqa: BLE001
+            context.setdefault("ingest_warning", f"Neo4j ingestion failed: {exc}")
+            logger.warning("Neo4j ingestion failed: %s", exc)
 
     try:
         result = run_single_call_from_context(
@@ -162,6 +166,8 @@ def analyze_earnings(
             symbol,
             context.get("transcript_date") or "",
             context.get("transcript_text") or "",
+            year=year,
+            quarter=quarter,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("compute_earnings_backtest failed for %s: %s", symbol, exc)
@@ -278,6 +284,8 @@ async def analyze_earnings_async(
             symbol,
             context.get("transcript_date") or "",
             context.get("transcript_text") or "",
+            year,
+            quarter,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("compute_earnings_backtest failed for %s: %s", symbol, exc)

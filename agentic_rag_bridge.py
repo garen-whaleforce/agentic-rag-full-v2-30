@@ -210,11 +210,21 @@ def run_single_call_from_context(
     _ensure_sys_path(repo_path)
     cred_path = _credentials_path(repo_path)
 
+    # Check if we should use AWS DB agents (no Neo4j dependency)
+    use_aws_db_agents = os.getenv("USE_AWS_DB_AGENTS", "true").lower() == "true"
+
     try:
         from agents.mainAgent import MainAgent
-        from agents.comparativeAgent import ComparativeAgent
-        from agents.historicalPerformanceAgent import HistoricalPerformanceAgent
-        from agents.historicalEarningsAgent import HistoricalEarningsAgent
+        if use_aws_db_agents:
+            from agents.aws_db_agents import (
+                AwsComparativeAgent as ComparativeAgent,
+                AwsHistoricalPerformanceAgent as HistoricalPerformanceAgent,
+                AwsHistoricalEarningsAgent as HistoricalEarningsAgent,
+            )
+        else:
+            from agents.comparativeAgent import ComparativeAgent
+            from agents.historicalPerformanceAgent import HistoricalPerformanceAgent
+            from agents.historicalEarningsAgent import HistoricalEarningsAgent
     except Exception as exc:  # noqa: BLE001
         raise AgenticRagBridgeError(f"匯入 Agentic RAG 模組失敗：{exc}") from exc
 

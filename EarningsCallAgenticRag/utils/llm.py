@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Dict, Tuple
 
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, AzureOpenAIEmbeddings
 from openai import AzureOpenAI, OpenAI
 
 DEFAULT_AZURE_VERSION = "2024-12-01-preview"
@@ -80,12 +80,12 @@ def build_embeddings(creds: Dict[str, str], model: str = "text-embedding-3-small
         deployment = embedding_dep or deployments.get(model)
         # If no explicit Azure embedding deployment is configured, fall back to OpenAI.
         if deployment:
-            return OpenAIEmbeddings(
+            return AzureOpenAIEmbeddings(
                 model=deployment,
-                deployment=deployment,
-                openai_api_key=azure_key,
+                azure_deployment=deployment,
+                api_key=azure_key,
                 azure_endpoint=azure_endpoint,
-                openai_api_version=azure_version,
+                api_version=azure_version,
             )
 
     api_key = creds.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
