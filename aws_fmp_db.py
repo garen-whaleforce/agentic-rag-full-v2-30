@@ -584,3 +584,146 @@ def get_market_timing(symbol: str, year: int, quarter: int) -> Optional[str]:
         except Exception as e:
             logger.debug("get_market_timing error: %s", e)
     return None
+
+
+def get_pre_earnings_momentum(symbol: str, earnings_date: str, days: int = 5) -> Optional[Dict]:
+    """
+    Calculate pre-earnings price momentum (N-day return before earnings).
+
+    Args:
+        symbol: Ticker symbol
+        earnings_date: YYYY-MM-DD format
+        days: Number of trading days to look back (default 5)
+
+    Returns: Dict with start_date, end_date, start_price, end_price, return_pct or None.
+    """
+    from datetime import datetime, timedelta
+
+    if not symbol or not earnings_date:
+        return None
+
+    try:
+        end_dt = datetime.strptime(earnings_date, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+    # Get prices for ~10 calendar days before earnings to ensure we have enough trading days
+    start_dt = end_dt - timedelta(days=days + 10)
+    start_str = start_dt.strftime("%Y-%m-%d")
+    end_str = end_dt.strftime("%Y-%m-%d")
+
+    prices = get_historical_prices(symbol, start_str, end_str)
+    if not prices or len(prices) < 2:
+        return None
+
+    # Get the last trading day before or on earnings date
+    end_row = None
+    for p in reversed(prices):
+        if p.get("date") <= earnings_date:
+            end_row = p
+            break
+
+    if not end_row:
+        return None
+
+    # Find the end index
+    end_idx = prices.index(end_row)
+    start_idx = max(0, end_idx - days)
+
+    if start_idx >= end_idx:
+        return None
+
+    start_row = prices[start_idx]
+
+    try:
+        start_price = float(start_row.get("close"))
+        end_price = float(end_row.get("close"))
+    except (TypeError, ValueError):
+        return None
+
+    if not start_price or not end_price:
+        return None
+
+    return_pct = ((end_price - start_price) / start_price) * 100
+
+    return {
+        "start_date": start_row.get("date"),
+        "end_date": end_row.get("date"),
+        "start_price": round(start_price, 2),
+        "end_price": round(end_price, 2),
+        "return_pct": round(return_pct, 2),
+        "days": end_idx - start_idx,
+    }
+
+
+def get_sector_context(sector: str) -> Optional[str]:
+    """
+    Get sector-specific analysis guidance.
+
+    Returns: String with sector-specific factors to consider.
+    """
+    sector_guidance = {
+        "Technology": (
+            "Tech sector key factors: Cloud revenue growth, subscription metrics (ARR/MRR), "
+            "R&D spending, AI/ML adoption, customer acquisition costs, net revenue retention, "
+            "and guidance on enterprise vs. consumer segments."
+        ),
+        "Healthcare": (
+            "Healthcare sector key factors: Pipeline updates, FDA approvals/setbacks, "
+            "clinical trial results, patent expiration impacts, drug pricing pressures, "
+            "and M&A activity in the space."
+        ),
+        "Financial Services": (
+            "Financial sector key factors: Net interest margin, loan growth, credit quality, "
+            "provisions for loan losses, fee income trends, capital ratios, and regulatory impacts."
+        ),
+        "Consumer Cyclical": (
+            "Consumer sector key factors: Same-store sales, e-commerce penetration, "
+            "inventory levels, consumer confidence correlation, seasonal patterns, "
+            "and supply chain resilience."
+        ),
+        "Consumer Defensive": (
+            "Consumer staples key factors: Volume vs. price growth, private label competition, "
+            "input cost inflation, brand loyalty metrics, and distribution expansion."
+        ),
+        "Industrials": (
+            "Industrial sector key factors: Order backlog, capacity utilization, "
+            "infrastructure spending correlation, supply chain constraints, "
+            "and international exposure to trade policies."
+        ),
+        "Energy": (
+            "Energy sector key factors: Production volumes, price realizations, "
+            "breakeven costs, CAPEX discipline, reserve replacement, and ESG transition plans."
+        ),
+        "Communication Services": (
+            "Telecom/Media key factors: Subscriber growth, ARPU trends, churn rates, "
+            "content spending efficiency, advertising revenue, and spectrum investments."
+        ),
+        "Real Estate": (
+            "Real estate key factors: Occupancy rates, rent growth, FFO/AFFO, "
+            "cap rates, interest rate sensitivity, and development pipeline."
+        ),
+        "Basic Materials": (
+            "Materials sector key factors: Commodity price exposure, production costs, "
+            "inventory cycles, China demand, and environmental compliance costs."
+        ),
+        "Utilities": (
+            "Utilities key factors: Rate case outcomes, regulatory environment, "
+            "renewable energy transition, infrastructure investments, and weather impacts."
+        ),
+    }
+
+    if not sector:
+        return None
+
+    # Try exact match first
+    if sector in sector_guidance:
+        return sector_guidance[sector]
+
+    # Try partial match
+    sector_lower = sector.lower()
+    for key, value in sector_guidance.items():
+        if key.lower() in sector_lower or sector_lower in key.lower():
+            return value
+
+    return None

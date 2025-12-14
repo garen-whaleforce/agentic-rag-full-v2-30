@@ -162,6 +162,93 @@ def _summarize_financials(financials: Optional[Dict[str, Any]]) -> str:
     return "\n".join(parts) if parts else "Financial statements present but could not summarize."
 
 
+def _format_analyst_consensus(surprise_data: Optional[Dict[str, Any]]) -> str:
+    """Format analyst consensus / earnings surprise data for the prompt."""
+    if not surprise_data:
+        return "No analyst consensus data available."
+
+    eps_actual = surprise_data.get("eps_actual")
+    eps_estimated = surprise_data.get("eps_estimated")
+    eps_surprise = surprise_data.get("eps_surprise")
+
+    if eps_actual is None or eps_estimated is None:
+        return "Analyst estimates not available for this quarter."
+
+    # Determine beat/miss
+    if eps_surprise is not None:
+        surprise_pct = eps_surprise
+    elif eps_estimated != 0:
+        surprise_pct = ((eps_actual - eps_estimated) / abs(eps_estimated)) * 100
+    else:
+        surprise_pct = 0
+
+    if eps_actual > eps_estimated:
+        result = "BEAT"
+    elif eps_actual < eps_estimated:
+        result = "MISS"
+    else:
+        result = "MET"
+
+    return (
+        f"EPS Actual: ${eps_actual:.2f}, EPS Estimate: ${eps_estimated:.2f} → {result} "
+        f"({surprise_pct:+.1f}% surprise). "
+        f"Historical pattern: Companies that beat tend to see positive drift, "
+        f"while misses often see continued pressure."
+    )
+
+
+def _format_price_momentum(momentum_data: Optional[Dict[str, Any]]) -> str:
+    """Format pre-earnings price momentum for the prompt."""
+    if not momentum_data:
+        return "Pre-earnings price momentum data not available."
+
+    return_pct = momentum_data.get("return_pct", 0)
+    days = momentum_data.get("days", 5)
+    start_price = momentum_data.get("start_price")
+    end_price = momentum_data.get("end_price")
+
+    # Interpret the momentum
+    if return_pct > 5:
+        interpretation = (
+            "STRONG UPWARD momentum. Stocks with significant pre-earnings run-ups "
+            "often face 'buy the rumor, sell the news' pressure even on good results."
+        )
+    elif return_pct > 2:
+        interpretation = (
+            "MODERATE UPWARD momentum. Some positive anticipation priced in, "
+            "but still room for upside on strong results."
+        )
+    elif return_pct < -5:
+        interpretation = (
+            "STRONG DOWNWARD momentum. Low expectations may set up for positive surprise. "
+            "However, continued selling may indicate institutional concerns."
+        )
+    elif return_pct < -2:
+        interpretation = (
+            "MODERATE DOWNWARD momentum. Sentiment is cautious, "
+            "which could amplify reaction to either beat or miss."
+        )
+    else:
+        interpretation = (
+            "NEUTRAL momentum. Market has no strong directional bias going into earnings. "
+            "Results will likely be the primary driver."
+        )
+
+    return (
+        f"{days}-day pre-earnings return: {return_pct:+.1f}% "
+        f"(${start_price:.2f} → ${end_price:.2f}). {interpretation}"
+    )
+
+
+def _format_sector_context(sector_guidance: Optional[str], sector: Optional[str]) -> str:
+    """Format sector-specific guidance for the prompt."""
+    if sector_guidance:
+        return f"[{sector}] {sector_guidance}"
+    elif sector:
+        return f"Sector: {sector}. Focus on industry-standard metrics and guidance clarity."
+    return "Sector context not available."
+
+
 @contextmanager
 def _push_dir(path: Path):
     cwd = Path.cwd()
@@ -232,12 +319,14 @@ def run_single_call_from_context(
     year = context.get("year")
     quarter = context.get("quarter")
     transcript_text = context.get("transcript_text") or ""
+    transcript_date = context.get("transcript_date") or ""
 
     if not symbol or not year or not quarter:
         raise AgenticRagBridgeError("context 缺少必填欄位：symbol、year、quarter。")
 
     quarter_label = f"{year}-Q{quarter}"
     sector_map = _load_sector_map(repo_path)
+    sector = context.get("sector")
 
     # FMP API fallback: If symbol not in sector_map CSV, query FMP for sector
     if symbol not in sector_map:
@@ -246,8 +335,33 @@ def run_single_call_from_context(
             profile = get_company_profile(symbol)
             if profile and profile.get("sector"):
                 sector_map[symbol] = profile["sector"]
+                sector = sector or profile["sector"]
         except Exception:
             pass  # Silently fall back to full DB scan if FMP fails
+
+    # Fetch additional signals for enhanced analysis
+    analyst_consensus_text = "No analyst consensus data available."
+    price_momentum_text = "Pre-earnings price momentum data not available."
+    sector_context_text = "Sector context not available."
+
+    try:
+        import aws_fmp_db
+        if aws_fmp_db.check_connection():
+            # Get earnings surprise (analyst consensus)
+            surprise_data = aws_fmp_db.get_earnings_surprise(symbol, year, quarter)
+            analyst_consensus_text = _format_analyst_consensus(surprise_data)
+
+            # Get pre-earnings price momentum
+            if transcript_date:
+                momentum_data = aws_fmp_db.get_pre_earnings_momentum(symbol, transcript_date, days=5)
+                price_momentum_text = _format_price_momentum(momentum_data)
+
+            # Get sector-specific guidance
+            if sector:
+                sector_guidance = aws_fmp_db.get_sector_context(sector)
+                sector_context_text = _format_sector_context(sector_guidance, sector)
+    except Exception:
+        pass  # Continue without additional signals if DB unavailable
 
     model_cfg = _resolve_models(main_model, helper_model)
 
@@ -294,10 +408,30 @@ def run_single_call_from_context(
             "ticker": symbol,
             "q": quarter_label,
             "transcript": transcript_text,
-            "sector": context.get("sector"),
+            "sector": sector,
         }
         financials_text = _summarize_financials(context.get("financials"))
-        agent_output = main_agent.run(facts, row, mem_txt=None, original_transcript=transcript_text, financial_statements_facts=financials_text)
+
+        # Build enhanced financial context with additional signals
+        enhanced_financial_context = f"""{financials_text}
+
+**Analyst Consensus (Beat/Miss Analysis):**
+{analyst_consensus_text}
+
+**Pre-Earnings Price Momentum (5-day):**
+{price_momentum_text}
+
+**Sector-Specific Adjustments:**
+{sector_context_text}
+"""
+
+        agent_output = main_agent.run(
+            facts,
+            row,
+            mem_txt=None,
+            original_transcript=transcript_text,
+            financial_statements_facts=enhanced_financial_context,
+        )
 
     if not isinstance(agent_output, dict):
         agent_output = {"raw_output": agent_output}
@@ -310,10 +444,13 @@ def run_single_call_from_context(
         match = re.search(r"Direction\s*:\s*(\d+)", summary, re.IGNORECASE)
         if match:
             score = int(match.group(1))
-            # 新的 mapping：Direction >= 6 視為 UP，<= 4 視為 DOWN，只有 5 是 NEUTRAL
-            if score >= 6:
+            # 優化後的 mapping：
+            # - Direction >= 7 視為 UP（高信心看漲）
+            # - Direction <= 2 視為 DOWN（僅極度看跌才預測下跌，因 DOWN 準確率較低）
+            # - Direction 3-6 視為 NEUTRAL（擴大中性區間，減少低信心預測）
+            if score >= 7:
                 return "UP", score / 10
-            if score <= 4:
+            if score <= 2:
                 return "DOWN", score / 10
             return "NEUTRAL", score / 10
 
@@ -362,6 +499,12 @@ def run_single_call_from_context(
             "helper_temperature": model_cfg["helper_temperature"],
         },
     )
+    # Add additional signals to metadata for debugging
+    meta["additional_signals"] = {
+        "analyst_consensus": analyst_consensus_text,
+        "price_momentum": price_momentum_text,
+        "sector_context": sector_context_text,
+    }
 
     return {
         "prediction": prediction,
