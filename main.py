@@ -285,6 +285,17 @@ class ProfileApply(BaseModel):
     name: str
 
 
+class BacktestRequest(BaseModel):
+    """回測請求參數"""
+    symbols: Optional[List[str]] = Field(None, description="指定股票列表，若為空則使用全部資料")
+    year_from: Optional[int] = Field(None, description="起始年份")
+    year_to: Optional[int] = Field(None, description="結束年份")
+    quarters: Optional[List[int]] = Field(None, description="指定季度 [1,2,3,4]，若為空則全部")
+    up_threshold: int = Field(6, description="UP 預測閾值 (direction_score >= threshold)")
+    only_up: bool = Field(True, description="只做 UP 預測，DOWN 視為 NEUTRAL")
+    limit: Optional[int] = Field(None, description="最多回傳筆數")
+
+
 # In-memory batch job registry for background batch processing
 _BATCH_JOBS: Dict[str, Dict[str, Any]] = {}
 _BATCH_LOCK: Optional[asyncio.Lock] = None
@@ -717,6 +728,227 @@ async def api_delete_profile(name: str):
     """刪除指定 profile。"""
     delete_prompt_profile(name)
     return {"status": "ok"}
+
+
+# ============================================================
+# 回測 API - 供外部程式呼叫
+# ============================================================
+
+# 載入 3500 筆 garen1212v4 測試結果 (啟動時載入一次)
+_BACKTEST_DATA: Optional[List[Dict[str, Any]]] = None
+_BACKTEST_DATA_PATH = BASE_DIR / "scripts" / "batch_3500_garen1212v4_final_20251214_113657.json"
+
+
+def _load_backtest_data() -> List[Dict[str, Any]]:
+    """載入並快取回測資料"""
+    global _BACKTEST_DATA
+    if _BACKTEST_DATA is None:
+        if _BACKTEST_DATA_PATH.exists():
+            with open(_BACKTEST_DATA_PATH, "r") as f:
+                _BACKTEST_DATA = json.load(f)
+        else:
+            _BACKTEST_DATA = []
+    return _BACKTEST_DATA
+
+
+@app.get("/api/backtest/info")
+async def api_backtest_info():
+    """
+    回測系統資訊
+    - profile: garen1212v4
+    - 資料筆數、時間範圍等
+    """
+    data = _load_backtest_data()
+    success = [d for d in data if d.get("status") == "success"]
+
+    years = sorted(set(d.get("year") for d in success if d.get("year")))
+    quarters = sorted(set(d.get("quarter") for d in success if d.get("quarter")))
+    symbols = sorted(set(d.get("symbol") for d in success if d.get("symbol")))
+
+    return {
+        "profile": "garen1212v4",
+        "total_records": len(data),
+        "success_records": len(success),
+        "years": years,
+        "quarters": quarters,
+        "symbol_count": len(symbols),
+        "data_file": str(_BACKTEST_DATA_PATH),
+    }
+
+
+@app.post("/api/backtest/run")
+async def api_backtest_run(payload: BacktestRequest):
+    """
+    執行回測分析
+
+    參數:
+    - symbols: 指定股票列表，若為空則使用全部
+    - year_from/year_to: 年份範圍
+    - quarters: 指定季度
+    - up_threshold: UP 預測閾值 (預設 6，可改為 7)
+    - only_up: 只做 UP 預測 (預設 True)
+    - limit: 最多回傳筆數
+
+    回傳:
+    - 勝率統計
+    - 每筆詳細結果
+    """
+    data = _load_backtest_data()
+    success = [d for d in data if d.get("status") == "success" and d.get("t30_actual") is not None]
+
+    # 過濾條件
+    filtered = success
+
+    if payload.symbols:
+        symbols_upper = [s.upper() for s in payload.symbols]
+        filtered = [d for d in filtered if d.get("symbol", "").upper() in symbols_upper]
+
+    if payload.year_from:
+        filtered = [d for d in filtered if d.get("year", 0) >= payload.year_from]
+
+    if payload.year_to:
+        filtered = [d for d in filtered if d.get("year", 9999) <= payload.year_to]
+
+    if payload.quarters:
+        filtered = [d for d in filtered if d.get("quarter") in payload.quarters]
+
+    # 套用閾值策略
+    results = []
+    hit_count = 0
+    miss_count = 0
+    skip_count = 0
+
+    for d in filtered:
+        score = d.get("direction_score", 5)
+        t30 = d["t30_actual"]
+
+        # 決定預測方向
+        if score >= payload.up_threshold:
+            prediction = "UP"
+        elif payload.only_up:
+            prediction = "NEUTRAL"
+        elif score <= 4:
+            prediction = "DOWN"
+        else:
+            prediction = "NEUTRAL"
+
+        # 計算結果
+        if prediction == "UP":
+            hit_result = "HIT" if t30 > 0 else "MISS"
+            if t30 > 0:
+                hit_count += 1
+            else:
+                miss_count += 1
+        elif prediction == "DOWN":
+            hit_result = "HIT" if t30 < 0 else "MISS"
+            if t30 < 0:
+                hit_count += 1
+            else:
+                miss_count += 1
+        else:
+            hit_result = "SKIP"
+            skip_count += 1
+
+        results.append({
+            "symbol": d.get("symbol"),
+            "year": d.get("year"),
+            "quarter": d.get("quarter"),
+            "earnings_date": d.get("earnings_date"),
+            "direction_score": score,
+            "prediction": prediction,
+            "t30_actual": round(t30, 2),
+            "hit_result": hit_result,
+        })
+
+    # 限制回傳筆數
+    if payload.limit and len(results) > payload.limit:
+        results = results[:payload.limit]
+
+    # 計算統計
+    total_valid = hit_count + miss_count
+    accuracy = (hit_count / total_valid * 100) if total_valid > 0 else 0
+    coverage = (total_valid / len(filtered) * 100) if filtered else 0
+
+    return {
+        "profile": "garen1212v4",
+        "strategy": {
+            "up_threshold": payload.up_threshold,
+            "only_up": payload.only_up,
+        },
+        "filters": {
+            "symbols": payload.symbols,
+            "year_from": payload.year_from,
+            "year_to": payload.year_to,
+            "quarters": payload.quarters,
+        },
+        "statistics": {
+            "total_samples": len(filtered),
+            "hit": hit_count,
+            "miss": miss_count,
+            "skip": skip_count,
+            "valid_predictions": total_valid,
+            "accuracy": round(accuracy, 2),
+            "coverage": round(coverage, 2),
+        },
+        "results": results,
+    }
+
+
+@app.get("/api/backtest/strategies")
+async def api_backtest_strategies():
+    """
+    列出預設策略及其歷史表現
+    """
+    data = _load_backtest_data()
+    success = [d for d in data if d.get("status") == "success" and d.get("t30_actual") is not None]
+
+    strategies = [
+        {"name": "original", "up_threshold": 6, "only_up": False, "description": "原始 (UP>=6, DOWN<=4)"},
+        {"name": "up_only_6", "up_threshold": 6, "only_up": True, "description": "只UP (>=6)"},
+        {"name": "up_only_7", "up_threshold": 7, "only_up": True, "description": "只UP (>=7)"},
+        {"name": "up_only_8", "up_threshold": 8, "only_up": True, "description": "只UP (>=8)"},
+    ]
+
+    results = []
+    for strat in strategies:
+        hit = 0
+        miss = 0
+        skip = 0
+
+        for d in success:
+            score = d.get("direction_score", 5)
+            t30 = d["t30_actual"]
+
+            if score >= strat["up_threshold"]:
+                if t30 > 0:
+                    hit += 1
+                else:
+                    miss += 1
+            elif not strat["only_up"] and score <= 4:
+                if t30 < 0:
+                    hit += 1
+                else:
+                    miss += 1
+            else:
+                skip += 1
+
+        total = hit + miss
+        acc = (hit / total * 100) if total > 0 else 0
+        cov = (total / len(success) * 100) if success else 0
+
+        results.append({
+            "name": strat["name"],
+            "description": strat["description"],
+            "up_threshold": strat["up_threshold"],
+            "only_up": strat["only_up"],
+            "hit": hit,
+            "miss": miss,
+            "skip": skip,
+            "accuracy": round(acc, 2),
+            "coverage": round(cov, 2),
+        })
+
+    return {"profile": "garen1212v4", "strategies": results}
 
 
 # Include backtest router (語義反轉回測系統) - only if available
