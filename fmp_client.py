@@ -541,8 +541,8 @@ def compute_post_return(symbol: str, call_date: str, days: int = 3) -> Dict[str,
         return {"return": None}
 
     start = call_dt + timedelta(days=0)
-    # broaden buffer to catch weekends/holidays; allow up to ~10 extra calendar days
-    end = call_dt + timedelta(days=days + 10)
+    # broaden buffer to catch weekends/holidays; for T+30 we need ~45 calendar days
+    end = call_dt + timedelta(days=days + 20)
     prices = _historical_prices(symbol, start, end)
     if not prices:
         return {"return": None}

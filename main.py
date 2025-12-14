@@ -49,7 +49,14 @@ from fmp_client import (
 )
 from agentic_rag_bridge import verify_agentic_repo
 from storage import ensure_db_writable, get_call, init_db, list_calls
-from semantic_backtest_service.api import router as backtest_router
+
+# Optional: semantic_backtest_service (may not be present in all deployments)
+try:
+    from semantic_backtest_service.api import router as backtest_router
+    HAS_BACKTEST_SERVICE = True
+except ImportError:
+    backtest_router = None
+    HAS_BACKTEST_SERVICE = False
 
 load_dotenv()
 
@@ -712,8 +719,9 @@ async def api_delete_profile(name: str):
     return {"status": "ok"}
 
 
-# Include backtest router (語義反轉回測系統)
-app.include_router(backtest_router)
+# Include backtest router (語義反轉回測系統) - only if available
+if HAS_BACKTEST_SERVICE and backtest_router:
+    app.include_router(backtest_router)
 
 
 @app.get("/api/calls")

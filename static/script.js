@@ -556,18 +556,18 @@ async function runAnalysis() {
       else if (postReturn < 0) kpiReturn.classList.add("neg");
     }
 
-    // Earnings Backtest display
+    // Earnings Backtest display (T+30)
     const backtestSession = document.getElementById("backtest-session");
     const backtestFrom = document.getElementById("backtest-from");
     const backtestTo = document.getElementById("backtest-to");
     const backtestChange = document.getElementById("backtest-change");
     const bt = data.backtest;
     if (bt && backtestSession && backtestFrom && backtestTo && backtestChange) {
-      const sessionLabel = bt.session === "BMO" ? "盤前 (BMO)" : bt.session === "AMC" ? "盤後 (AMC)" : "未知";
+      const sessionLabel = bt.session === "BMO" ? "盤前 (BMO)" : bt.session === "AMC" ? "盤後 (AMC)" : "-";
       backtestSession.textContent = `${bt.earnings_date || "-"} ${sessionLabel}`;
       const fmtPrice = (p) => (p != null ? `$${p.toFixed(2)}` : "N/A");
-      backtestFrom.textContent = bt.from_date ? `${bt.from_date}: ${fmtPrice(bt.from_close)}` : "-";
-      backtestTo.textContent = bt.to_date ? `${bt.to_date}: ${fmtPrice(bt.to_close)}` : "-";
+      backtestFrom.textContent = bt.from_date ? `T+1: ${bt.from_date} ${fmtPrice(bt.from_close)}` : "-";
+      backtestTo.textContent = bt.to_date ? `T+30: ${bt.to_date} ${fmtPrice(bt.to_close)}` : "-";
       if (bt.change_pct != null) {
         const sign = bt.change_pct > 0 ? "+" : "";
         backtestChange.textContent = `${sign}${bt.change_pct.toFixed(2)}%`;

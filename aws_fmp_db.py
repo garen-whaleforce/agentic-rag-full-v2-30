@@ -200,6 +200,21 @@ def get_transcript_dates(symbol: str) -> List[Dict]:
     return []
 
 
+def _serialize_row(row: Dict) -> Dict:
+    """Convert database row to JSON-serializable dict, handling date/datetime/Decimal types."""
+    from datetime import date, datetime
+    from decimal import Decimal
+    result = {}
+    for key, value in row.items():
+        if isinstance(value, Decimal):
+            result[key] = float(value)
+        elif isinstance(value, (date, datetime)):
+            result[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
+        else:
+            result[key] = value
+    return result
+
+
 def get_quarterly_financials(symbol: str, limit: int = 4) -> Optional[Dict]:
     """
     Fetch quarterly financial statements from AWS database.
@@ -220,7 +235,7 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Optional[Dict]:
                 ORDER BY date DESC
                 LIMIT %s
             """, (symbol.upper(), limit))
-            income = [dict(row) for row in cur.fetchall()]
+            income = [_serialize_row(dict(row)) for row in cur.fetchall()]
 
             # Balance sheets
             cur.execute("""
@@ -229,7 +244,7 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Optional[Dict]:
                 ORDER BY date DESC
                 LIMIT %s
             """, (symbol.upper(), limit))
-            balance = [dict(row) for row in cur.fetchall()]
+            balance = [_serialize_row(dict(row)) for row in cur.fetchall()]
 
             # Cash flow statements
             cur.execute("""
@@ -238,7 +253,7 @@ def get_quarterly_financials(symbol: str, limit: int = 4) -> Optional[Dict]:
                 ORDER BY date DESC
                 LIMIT %s
             """, (symbol.upper(), limit))
-            cash_flow = [dict(row) for row in cur.fetchall()]
+            cash_flow = [_serialize_row(dict(row)) for row in cur.fetchall()]
 
             if income or balance or cash_flow:
                 return {
@@ -312,7 +327,7 @@ def get_price_analysis(symbol: str, year: int, quarter: int) -> Optional[Dict]:
             """, (symbol.upper(), year, quarter))
             row = cur.fetchone()
             if row:
-                return dict(row)
+                return _serialize_row(dict(row))
         except Exception as e:
             logger.debug("get_price_analysis error: %s", e)
     return None
@@ -387,7 +402,7 @@ def get_historical_financials(symbol: str, before_date: str, limit: int = 4) -> 
                 ORDER BY date DESC
                 LIMIT %s
             """, (symbol.upper(), before_date, limit))
-            income = [dict(row) for row in cur.fetchall()]
+            income = [_serialize_row(dict(row)) for row in cur.fetchall()]
 
             # Balance sheets before date
             cur.execute("""
@@ -398,7 +413,7 @@ def get_historical_financials(symbol: str, before_date: str, limit: int = 4) -> 
                 ORDER BY date DESC
                 LIMIT %s
             """, (symbol.upper(), before_date, limit))
-            balance = [dict(row) for row in cur.fetchall()]
+            balance = [_serialize_row(dict(row)) for row in cur.fetchall()]
 
             # Cash flow statements before date
             cur.execute("""
@@ -409,7 +424,7 @@ def get_historical_financials(symbol: str, before_date: str, limit: int = 4) -> 
                 ORDER BY date DESC
                 LIMIT %s
             """, (symbol.upper(), before_date, limit))
-            cash_flow = [dict(row) for row in cur.fetchall()]
+            cash_flow = [_serialize_row(dict(row)) for row in cur.fetchall()]
 
             return {"income": income, "balance": balance, "cashFlow": cash_flow}
         except Exception as e:
@@ -474,7 +489,7 @@ def get_peer_financials(sector: str, exclude_symbol: str, date: str, limit: int 
                 WHERE sector = %s AND UPPER(symbol) != %s
                 LIMIT %s
             """, (sector, exclude_symbol.upper(), limit))
-            peers = [dict(row) for row in cur.fetchall()]
+            peers = [_serialize_row(dict(row)) for row in cur.fetchall()]
 
             results = []
             for peer in peers:
@@ -492,7 +507,7 @@ def get_peer_financials(sector: str, exclude_symbol: str, date: str, limit: int 
                 results.append({
                     "symbol": peer_symbol,
                     "name": peer["name"],
-                    "financials": dict(income_row) if income_row else None,
+                    "financials": _serialize_row(dict(income_row)) if income_row else None,
                 })
             return results
         except Exception as e:

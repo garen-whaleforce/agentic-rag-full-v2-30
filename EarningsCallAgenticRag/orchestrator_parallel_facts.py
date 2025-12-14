@@ -81,8 +81,8 @@ METRIC_MAPPING = {
     "MAIN BUSINESS INCOME": "Revenue",  # All caps version
 }
 
-# Shared OpenAI semaphore (limit to 4 concurrent calls)
-openai_semaphore = threading.Semaphore(4)
+# Shared OpenAI semaphore (limit to 10 concurrent calls)
+openai_semaphore = threading.Semaphore(10)
 
 # ---------- Neo4j Connection Setup and File Locking ------------
 class Neo4jFileLock:

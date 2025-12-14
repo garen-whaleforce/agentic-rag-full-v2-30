@@ -105,7 +105,7 @@ def get_transcript_metadata(symbol: str, year: int, quarter: int) -> Optional[Di
                 LIMIT 1
             """, (symbol.upper(), year, quarter))
             row = cur.fetchone()
-            return dict(row) if row else None
+            return _convert_decimals(dict(row)) if row else None
     except Exception as e:
         print(f"[AWS DB] get_transcript_metadata error: {e}")
         return None
@@ -124,7 +124,7 @@ def get_all_transcript_dates(symbol: str) -> List[Dict[str, Any]]:
                 WHERE symbol = %s
                 ORDER BY year DESC, quarter DESC
             """, (symbol.upper(),))
-            return [dict(row) for row in cur.fetchall()]
+            return [_convert_decimals(dict(row)) for row in cur.fetchall()]
     except Exception as e:
         print(f"[AWS DB] get_all_transcript_dates error: {e}")
         return []
@@ -151,7 +151,7 @@ def get_company_info(symbol: str) -> Optional[Dict[str, Any]]:
                 LIMIT 1
             """, (symbol.upper(),))
             row = cur.fetchone()
-            return dict(row) if row else None
+            return _convert_decimals(dict(row)) if row else None
     except Exception as e:
         print(f"[AWS DB] get_company_info error: {e}")
         return None
@@ -187,7 +187,7 @@ def get_all_companies() -> List[Dict[str, Any]]:
                 FROM companies
                 ORDER BY symbol
             """)
-            return [dict(row) for row in cur.fetchall()]
+            return [_convert_decimals(dict(row)) for row in cur.fetchall()]
     except Exception as e:
         print(f"[AWS DB] get_all_companies error: {e}")
         return []
@@ -198,8 +198,17 @@ def get_all_companies() -> List[Dict[str, Any]]:
 # =============================================================================
 
 def _convert_decimals(row: Dict) -> Dict:
-    """Convert Decimal values to float for JSON serialization."""
-    return {k: float(v) if isinstance(v, Decimal) else v for k, v in row.items()}
+    """Convert Decimal and date values for JSON serialization."""
+    from datetime import date, datetime
+    result = {}
+    for k, v in row.items():
+        if isinstance(v, Decimal):
+            result[k] = float(v)
+        elif isinstance(v, (date, datetime)):
+            result[k] = v.isoformat() if hasattr(v, 'isoformat') else str(v)
+        else:
+            result[k] = v
+    return result
 
 
 def get_income_statements(symbol: str, limit: int = 4) -> List[Dict[str, Any]]:
@@ -456,7 +465,7 @@ def get_peer_transcripts(
                 ORDER BY c.symbol
                 LIMIT %s
             """, (sector, symbol.upper(), year, q, limit))
-            return [dict(row) for row in cur.fetchall()]
+            return [_convert_decimals(dict(row)) for row in cur.fetchall()]
     except Exception as e:
         print(f"[AWS DB] get_peer_transcripts error: {e}")
         return []
@@ -498,7 +507,7 @@ def get_peer_financials(
                 ORDER BY symbol
                 LIMIT %s
             """, (sector, symbol.upper(), limit))
-            peers = [dict(row) for row in cur.fetchall()]
+            peers = [_convert_decimals(dict(row)) for row in cur.fetchall()]
 
             # Get financials for each peer
             results = []
@@ -893,7 +902,7 @@ def get_transcript_dates_aws(symbol: str) -> List[Dict[str, Any]]:
 
             results = []
             for row in cur.fetchall():
-                row_dict = dict(row)
+                row_dict = _convert_decimals(dict(row))
                 # Calculate calendar year/quarter from transcript date
                 date_str = row_dict.get("transcript_date_str") or ""
                 calendar_year = None

@@ -1,9 +1,12 @@
 """
 Earnings Backtest Service
 
-計算 earnings call 前後的股價變化：
-- BMO (Before Market Open): 前一交易日收盤 → 當天收盤
-- AMC (After Market Close): 當天收盤 → 下一交易日收盤
+計算 earnings call 後 30 個交易日的股價變化 (T+30)：
+- from_date: earnings call 後第一個交易日
+- to_date: from_date 後第 30 個交易日
+- change_pct: 30 天報酬率百分比
+
+同時保留 session (BMO/AMC) 資訊供參考。
 """
 from __future__ import annotations
 
@@ -187,7 +190,7 @@ def compute_earnings_backtest(
     quarter: Optional[int] = None,
 ) -> Optional[EarningsBacktest]:
     """
-    計算 earnings call 的回測資訊。
+    計算 earnings call 後 30 個交易日的報酬率 (T+30)。
 
     Args:
         symbol: 股票代號
@@ -199,10 +202,11 @@ def compute_earnings_backtest(
     Returns:
         EarningsBacktest 結構，包含：
         - earnings_date: 原始日期
-        - session: BMO/AMC/UNKNOWN
-        - from_date/to_date: 比較的兩個日期
+        - session: BMO/AMC/UNKNOWN (保留供參考)
+        - from_date: earnings call 後第一個交易日
+        - to_date: from_date 後第 30 個交易日
         - from_close/to_close: 兩個日期的收盤價
-        - change_pct: 漲跌百分比
+        - change_pct: 30 天報酬率百分比
     """
     if not symbol or not earnings_date:
         return None
@@ -224,50 +228,21 @@ def compute_earnings_backtest(
     if session == "UNKNOWN" and transcript:
         session = infer_earnings_session_from_transcript(transcript)
 
-    # 2. 根據 session 決定比較日期
-    if session == "BMO":
-        # 盤前：前一交易日收盤 → 當天收盤
-        from_date = get_previous_trading_day(symbol, earnings_date)
-        to_date = earnings_date
+    # 2. 使用 fmp_client.compute_post_return 計算 T+30
+    from fmp_client import compute_post_return
 
-        # 如果 earnings_date 不是交易日，找最近的交易日
-        if from_date and not get_close_price(symbol, to_date):
-            # 嘗試找 earnings_date 當天或之後最近的交易日
-            next_day = get_next_trading_day(symbol, from_date)
-            if next_day and next_day >= earnings_date:
-                to_date = next_day
-    else:
-        # 盤後或 UNKNOWN：當天收盤 → 下一交易日收盤
-        from_date = earnings_date
-        to_date = get_next_trading_day(symbol, earnings_date)
+    t30_result = compute_post_return(symbol, earnings_date, days=30)
 
-        # 如果 earnings_date 不是交易日，調整
-        if not get_close_price(symbol, from_date):
-            prev_day = get_previous_trading_day(symbol, earnings_date)
-            if prev_day:
-                from_date = prev_day
-                to_date = get_next_trading_day(symbol, from_date)
+    from_date = t30_result.get("start_date") or ""
+    to_date = t30_result.get("end_date") or ""
+    from_close = t30_result.get("start_price")
+    to_close = t30_result.get("end_price")
+    ret = t30_result.get("return")
 
-    if not from_date or not to_date:
-        logger.warning(f"Could not determine trading days for {symbol} around {earnings_date}")
-        return EarningsBacktest(
-            earnings_date=earnings_date,
-            session=session,
-            from_date=from_date or "",
-            to_date=to_date or "",
-            from_close=None,
-            to_close=None,
-            change_pct=None,
-        )
-
-    # 3. 取得收盤價
-    from_close = get_close_price(symbol, from_date)
-    to_close = get_close_price(symbol, to_date)
-
-    # 4. 計算漲跌百分比
+    # 計算漲跌百分比 (return 是小數，需要轉成百分比)
     change_pct: Optional[float] = None
-    if from_close is not None and to_close is not None and from_close != 0:
-        change_pct = round((to_close - from_close) / from_close * 100, 2)
+    if ret is not None:
+        change_pct = round(ret * 100, 2)
 
     return EarningsBacktest(
         earnings_date=earnings_date,
